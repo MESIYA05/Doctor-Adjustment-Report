@@ -1,0 +1,1204 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #c0c8d4 #f5f5f5;
+}
+
+html::-webkit-scrollbar {
+  width: 8px;
+}
+
+html::-webkit-scrollbar-track {
+  background: #f5f5f5;
+}
+
+html::-webkit-scrollbar-thumb {
+  background: #c0c8d4;
+  border-radius: 4px;
+}
+
+html::-webkit-scrollbar-thumb:hover {
+  background: #a8b1bf;
+}
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 13px;
+  background: #f4f6f9;
+  color: #333;
+}
+
+/* ── Branded Report Header ── */
+.report-header {
+  background: #ffffff;
+  border-bottom: 1px solid #e3e6eb;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.report-header-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.report-header-brand {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.report-logo {
+  height: 54px;
+  width: auto;
+  max-width: 160px;
+  object-fit: contain;
+  display: block;
+}
+
+.report-brand-text {
+  display: none;
+}
+
+.report-brand-name {
+  display: none;
+}
+
+.report-brand-tagline {
+  display: none;
+}
+.filter-group input.doctor-display-field {
+  height: 38px;
+  width: 100%;
+  border: 1px solid #d6dae1;
+  border-radius: 5px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: #333;
+  background: #f5f6f8;
+  cursor: default;
+}
+.report-header-divider {
+  display: none;
+}
+
+.report-header-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.report-header-spacer {
+  flex-grow: 1;
+}
+
+.report-header-title h1 {
+  font-size: 21px;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.1px;
+  line-height: 1;
+}
+
+.report-header-sub {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .report-header-inner { flex-direction: column; gap: 12px; padding: 16px; }
+  .report-logo { height: 40px; }
+}
+
+/* ── Filter Panel ── */
+.filter-panel {
+  background: #fff;
+  border: 1px solid #e3e6eb;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  margin: 18px 20px 18px;
+  padding: 20px 22px 22px;
+}
+
+.filter-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 24px;
+  row-gap: 16px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.filter-group label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #3a6fa8;
+  letter-spacing: 0.1px;
+  line-height: 1;
+}
+
+/* keep legacy selects & date inputs styled the same */
+.filter-group select,
+.filter-group input[type="date"] {
+  height: 38px;
+  width: 100%;
+  border: 1px solid #d6dae1;
+  border-radius: 5px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: #333;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.filter-group select:focus,
+.filter-group input[type="date"]:focus {
+  border-color: #5b9bd5;
+  box-shadow: 0 0 0 2px rgba(91,155,213,0.18);
+}
+
+.filter-group select { min-width: 0; }
+
+.date-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-row input[type="date"] {
+  width: 130px;
+  cursor: pointer;
+}
+
+.date-row input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.date-arrow { font-size: 13px; color: #888; }
+
+/* Action buttons row, aligned under the fields */
+.filter-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* ── Searchable Select ── */
+.searchable-select {
+  position: relative;
+  width: 100%;
+}
+
+.ss-trigger {
+  height: 38px;
+  width: 100%;
+  border: 1px solid #d6dae1;
+  border-radius: 5px;
+  padding: 0 30px 0 10px;
+  font-size: 13px;
+  color: #333;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  position: relative;
+  user-select: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ss-trigger:focus,
+.searchable-select.open .ss-trigger {
+  border-color: #5b9bd5;
+  box-shadow: 0 0 0 2px rgba(91,155,213,0.18);
+  outline: none;
+}
+
+.ss-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ss-arrow {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 8px;
+  color: #666;
+  pointer-events: none;
+  transition: transform 0.18s;
+  line-height: 1;
+}
+
+.searchable-select.open .ss-arrow {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.ss-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: 280px;
+  background: #fff;
+  border: 1px solid #c5d5e8;
+  border-radius: 4px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+  z-index: 500;
+  overflow: hidden;
+}
+
+.searchable-select.open .ss-dropdown {
+  display: block;
+}
+
+.ss-search-wrap {
+  padding: 6px 7px;
+  border-bottom: 1px solid #e8eaed;
+  background: #f7f9fc;
+}
+
+.ss-search {
+  width: 100%;
+  height: 26px;
+  border: 1px solid #c8d4e0;
+  border-radius: 3px;
+  padding: 0 7px;
+  font-size: 11.5px;
+  color: #333;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.ss-search:focus {
+  border-color: #5b9bd5;
+}
+
+.ss-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ss-option {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ss-option:hover {
+  background: #eef4fb;
+  color: #2466a8;
+}
+
+.ss-option.selected {
+  background: #eef4fb;
+  color: #2466a8;
+  font-weight: 600;
+}
+
+.ss-list::-webkit-scrollbar { width: 5px; }
+.ss-list::-webkit-scrollbar-track { background: #f5f5f5; }
+.ss-list::-webkit-scrollbar-thumb { background: #c0c8d4; border-radius: 3px; }
+
+/* ── Adj Types custom dropdown (legacy, kept for compat) ── */
+.adj-types-wrapper { position: relative; }
+
+.adj-types-trigger {
+  height: 32px;
+  min-width: 210px;
+  border: 1px solid #c0c0c0;
+  border-radius: 4px;
+  padding: 0 24px 0 7px;
+  font-size: 12px;
+  color: #333;
+  background: #fff;
+  outline: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  position: relative;
+  user-select: none;
+  transition: border-color 0.15s;
+}
+
+.adj-types-trigger.open,
+.adj-types-trigger:focus {
+  border-color: #5b9bd5;
+  box-shadow: 0 0 0 2px rgba(91,155,213,0.18);
+}
+
+.adj-types-trigger .arrow {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  color: #666;
+  pointer-events: none;
+  transition: transform 0.2s;
+}
+
+.adj-types-trigger.open .arrow { transform: translateY(-50%) rotate(180deg); }
+
+.adj-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 1px);
+  left: 0;
+  min-width: 250px;
+  background: #fff;
+  border: 1px solid #c0c0c0;
+  border-radius: 4px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.13);
+  z-index: 300;
+  max-height: 270px;
+  overflow-y: auto;
+}
+
+.adj-dropdown::-webkit-scrollbar {
+  width: 5px;
+}
+
+.adj-dropdown::-webkit-scrollbar-track {
+  background: #f5f5f5;
+}
+
+.adj-dropdown::-webkit-scrollbar-thumb {
+  background: #c0c8d4;
+  border-radius: 3px;
+}
+
+.adj-dropdown::-webkit-scrollbar-thumb:hover {
+  background: #a8b1bf;
+}
+
+.adj-dropdown.open { display: block; }
+
+.adj-search {
+  padding: 5px 7px;
+  border-bottom: 1px solid #e4e6ea;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+
+.adj-search input {
+  width: 100%;
+  height: 24px;
+  border: 1px solid #c0c0c0;
+  border-radius: 2px;
+  padding: 0 6px;
+  font-size: 11px;
+  outline: none;
+}
+
+.adj-search input:focus { border-color: #5b9bd5; }
+
+.adj-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 9px;
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 12px;
+}
+
+.adj-option:hover { background: #eef4fb; }
+
+.adj-option.check-all {
+  border-bottom: 1px solid #e4e6ea;
+  font-weight: 600;
+  background: #f7f8fa;
+}
+
+.adj-option input[type="checkbox"] {
+  margin-right: 6px;
+  cursor: pointer;
+  accent-color: #5b9bd5;
+}
+
+.adj-option .opt-badge {
+  font-size: 11px;
+  color: #999;
+  min-width: 18px;
+  text-align: right;
+}
+
+/* ── Buttons ── */
+.btn {
+  height: 38px;
+  padding: 0 18px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: background 0.15s, transform 0.1s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.btn:active { transform: scale(0.97); }
+.btn-update  { background: #3a5a8a;; color: #fff; }
+.btn-update:hover  { background: #4a58c4; }
+.btn-reset   { background: #fff; color: #555; border: 1px solid #c0c0c0; }
+.btn-reset:hover   { background: #f5f5f5; }
+.btn-excel   { background: #217346; color: #fff; }
+.btn-excel:hover   { background: #1a5c38; }
+.btn-pdf     { background: #c0392b; color: #fff; }
+.btn-pdf:hover     { background: #a93226; }
+
+/* ── Main content ── */
+.main-content { padding: 0 20px 14px; }
+
+/* ── Table section ── */
+.table-section {
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 5px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #f5f6f8;
+  border-bottom: 1px solid #d8dce2;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.table-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toolbar-export {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.table-search {
+  height: 30px;
+  border: 1px solid #c0c0c0;
+  border-radius: 4px;
+  padding: 0 10px;
+  font-size: 12px;
+  outline: none;
+  width: 210px;
+  background: #fff;
+  transition: border-color 0.15s;
+}
+
+.table-search:focus { border-color: #5b9bd5; box-shadow: 0 0 0 2px rgba(91,155,213,0.15); }
+
+/* Hide table-wrapper's own horizontal scrollbar — the proxy bar below replaces it visually */
+.table-wrapper {
+  overflow-x: auto;
+  scrollbar-width: none;       /* Firefox */
+}
+.table-wrapper::-webkit-scrollbar {
+  display: none;               /* Chrome/Safari/Edge */
+}
+
+/* Slim scroll bar pinned at the very bottom of the whole card */
+.bottom-scroll-proxy {
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 14px;
+  border-top: 1px solid #d8dce2;
+  background: #f5f6f8;
+}
+.bottom-scroll-proxy-inner {
+  height: 1px;   /* just needs width — JS sets it to match the table's scrollWidth */
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+thead th {
+  background: #3a5a8a;
+  color: #fff;
+  padding: 11px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+thead th:hover { background: #4a6a9a; }
+
+thead th .sort-icon { margin-left: 3px; opacity: 0.55; font-size: 9px; }
+thead th.sort-asc  .sort-icon::after { content: '▲'; }
+thead th.sort-desc .sort-icon::after { content: '▼'; }
+thead th:not(.sort-asc):not(.sort-desc) .sort-icon::after { content: '⇅'; }
+
+tbody tr { border-bottom: 1px solid #eeeff2; transition: background 0.08s; }
+tbody tr:hover { background: #f0f6ff; }
+/* ── Per-claim group shading (alternates by claim, not by row) ── */
+tbody tr.claim-grp-even td {
+  background: #ffffff;
+}
+tbody tr.claim-grp-odd td {
+  background: #f4f7fb;
+}
+tbody tr.claim-grp-even:hover td,
+tbody tr.claim-grp-odd:hover td {
+  background: #eaf2fc;
+}
+
+/* Stronger divider between one claim's group and the next */
+tbody tr.claim-group-start td {
+  border-top: 2px solid #b9c2cf;
+}
+
+tbody td {
+  padding: 11px 16px;
+  color: #333;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+/*
+   Column order (12 columns total):
+   1  Claim ID
+   2  Claim Date
+   3  Hospital
+   4  Doctor
+   5  Staff
+   6  Patient
+   7  Adjustment Type
+   8  Notes
+   9  Item Number
+   10 Original Amount
+   11 Adjustment Amount
+   12 Final Amount
+*/
+
+/* Item Number column: center-aligned */
+.col-item { text-align: center; }
+
+/* Amount columns: right-aligned — regardless of row position within a rowspan group */
+.col-orig,
+.col-adj,
+.col-final {
+    text-align: right;
+}
+
+/* Header row still has a fixed, full set of columns, so nth-child is safe there */
+thead th:nth-child(9)  { text-align: center; }
+thead th:nth-child(10),
+thead th:nth-child(11),
+thead th:nth-child(12) { text-align: right; }
+/* Right-align the three amount columns */
+thead th:nth-child(10),
+thead th:nth-child(11),
+thead th:nth-child(12),
+tbody td:nth-child(10),
+tbody td:nth-child(11),
+tbody td:nth-child(12) {
+  text-align: right;
+}
+
+/* Notes column: wraps and grows with its content;
+   every other column stays single-line as before. */
+tbody td:nth-child(8) {
+  white-space: normal;
+  line-height: 1.5;
+  max-width: 220px;
+}
+
+.type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.badge-bad-debt   { background: #fde8e8; color: #b03030; }
+.badge-bank       { background: #e4f1fc; color: #2470a8; }
+.badge-bounced    { background: #fef7e3; color: #c47a10; }
+.badge-deceased   { background: #f3ecf7; color: #7d3f9a; }
+.badge-discount   { background: #e5f7f1; color: #1a6e50; }
+.badge-elderly    { background: #fef3e3; color: #b5601a; }
+.badge-incorrect  { background: #e8f2ff; color: #1f66a0; }
+.badge-other      { background: #f0f1f3; color: #555e6a; }
+.badge-overpay    { background: #e5fdf3; color: #1b7a44; }
+.badge-refund     { background: #fceef8; color: #9a4ea8; }
+.badge-waiver     { background: #f5f6f7; color: #5a6570; }
+.badge-writeoff   { background: #fdeae8; color: #a83028; }
+
+.amount-pos { color: #1e7e3a; font-weight: 600; }
+.amount-neg { color: #b03030; font-weight: 600; }
+
+/* ── Grouped claim rows (rowspan) ── */
+
+/* Visual separation between one claim's group of line items and the next */
+tbody tr.claim-group-start td {
+  border-top: 2px solid #c7ccd4;
+}
+
+/* Rowspan'd claim-level cells vertically center their content
+   relative to however many line-item rows they span */
+tbody td[rowspan] {
+  vertical-align: middle;
+}
+
+/* ── Footer ── */
+.table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  background: #f5f6f8;
+  border-top: 1px solid #d8dce2;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rows-info { font-size: 11px; color: #777; }
+
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pagination { display: flex; gap: 3px; align-items: center; }
+
+.page-btn {
+  height: 26px;
+  min-width: 26px;
+  border: 1px solid #c0c0c0;
+  background: #fff;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 5px;
+  color: #333;
+  transition: all 0.12s;
+}
+
+.page-btn:hover { background: #eef4fb; border-color: #5b9bd5; color: #5b9bd5; }
+.page-btn.active { background: #5b9bd5; border-color: #5b9bd5; color: #fff; font-weight: 700; }
+.page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.per-page-select {
+  height: 26px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+  background: #fff;
+}
+
+.no-results {
+  text-align: center;
+  padding: 40px;
+  color: #bbb;
+  font-size: 13px;
+}
+
+/* ── Loading ── */
+.loading-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,0.32);
+  backdrop-filter: blur(1.5px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.loading-overlay.show {
+  display: flex;
+  animation: loading-overlay-in 0.18s ease-out;
+}
+
+@keyframes loading-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.loading-box {
+  background: #fff;
+  border-radius: 10px;
+  padding: 26px 34px;
+  font-size: 13px;
+  color: #333;
+  box-shadow: 0 12px 32px rgba(21,35,75,0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  animation: loading-box-in 0.28s ease-out;
+}
+
+@keyframes loading-box-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Smooth gradient "comet" ring loader — fading arc instead of a hard split ── */
+.loader-ring {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 220deg,
+    #3a8c5a 300deg,
+    #1b5e2d 360deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 calc(100% - 4.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 calc(100% - 4.5px));
+  animation: loader-ring-spin 0.85s cubic-bezier(0.55, 0.05, 0.45, 0.95) infinite;
+  position: relative;
+}
+
+.loader-ring::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 6px; height: 6px;
+  margin: -1px -1px 0 0;
+  border-radius: 50%;
+  background: #1b5e2d;
+  box-shadow: 0 0 6px rgba(27,94,45,0.6);
+}
+
+@keyframes loader-ring-spin { to { transform: rotate(360deg); } }
+
+.loading-text-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-weight: 600;
+  color: #15234b;
+  letter-spacing: 0.2px;
+}
+
+.loading-dots { display: inline-flex; gap: 2px; }
+
+.loading-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #3a5a8a;
+  display: inline-block;
+  font-style: normal;
+  animation: loading-dot-bounce 1.1s ease-in-out infinite;
+}
+
+.loading-dots i:nth-child(2) { animation-delay: 0.15s; }
+.loading-dots i:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes loading-dot-bounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30%           { opacity: 1;   transform: translateY(-3px); }
+}
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  background: #3a5a8a;
+  color: #fff;
+  padding: 9px 16px;
+  border-radius: 4px;
+  font-size: 12px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.18);
+  transform: translateY(50px);
+  opacity: 0;
+  transition: all 0.25s;
+  z-index: 999;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+
+/* @media (max-width: 900px) {
+  .filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+} */
+
+@media (max-width: 680px) {
+  .filter-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  row-gap: 16px;
+  column-gap: 20px;
+}
+  .table-toolbar { flex-direction: column; align-items: flex-start; }
+  .table-footer { flex-direction: column; align-items: flex-start; }
+}
+/* Instead of relying on border-bottom which misbehaves with rowspan: */
+#claims-table {
+    border-collapse: separate;   /* not collapse */
+    border-spacing: 0;
+}
+
+#claims-table td {
+    border-bottom: none;
+    box-shadow: inset 0 -1px 0 #e5e7eb;   /* draws a consistent 1px line under every cell */
+}
+
+/* Group separator between different claims stays as a real border-top,
+   applied only to the row that starts a new claim */
+#claims-table tr.claim-group-start td {
+    box-shadow: inset 0 1px 0 #c7cbd1, inset 0 -1px 0 #e5e7eb;
+}
+#claims-table tr.claim-line-row td {
+    box-shadow: inset 0 -1px 0 #e5e7eb;
+}
+/* Hide the repeated claim-level text visually on every row after the first
+   in a group, but keep the cell present so column count/width stays identical */
+.claim-group-continued .claim-repeat-cell {
+    border-top: none !important;
+    box-shadow: none !important;
+}
+
+/* Optional: keep a very subtle left border/background so grouped rows still
+   read as "belonging together" without native rowspan */
+.claim-group-start td {
+    border-top: 1px solid #c7cbd1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   RESPONSIVE / MOBILE OVERRIDES
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   RESPONSIVE / MOBILE OVERRIDES
+   (Desktop 2-column layout stays as-is; only ≤680px changes)
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 680px) {
+  body { font-size: 12.5px; }
+
+  /* ── Header: logo left, title right — same row as desktop ── */
+.report-header-inner {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.report-logo {
+  height: 38px;
+  max-width: 120px;
+}
+
+.report-header-title {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+  /* ── Filter panel container ── */
+  /* ── Equalize width: filter panel and table section ── */
+.main-content {
+  padding: 0 10px 14px;
+  margin: 0;
+}
+
+.filter-panel {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+  /* ── Fields: single column, full width, touch-friendly height ── */
+  .filter-row {
+  grid-template-columns: 1fr;
+  row-gap: 14px;
+  column-gap: 0;
+}
+.filter-group input[type="date"] {
+  padding-right: 4px;
+}
+
+  .filter-group label {
+    font-size: 12.5px;
+  }
+
+  .filter-group select,
+.filter-group input[type="date"],
+.ss-trigger {
+  height: 42px;
+  font-size: 12.5px;
+  padding: 0 8px 0 10px;
+  width: 100%;
+  max-width: 100%;
+}
+
+
+  .date-row {
+    width: 100%;
+  }
+
+  .date-row input[type="date"] {
+    width: 100%;
+    flex: 1;
+  }
+
+  /* ── Buttons: stacked, full width, single column ── */
+/* ── Buttons: force true 2×2 grid ── */
+.filter-actions-row {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.btn {
+  height: 44px;
+  font-size: 13px;
+  padding: 0 10px;
+  border-radius: 5px;
+  width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+ 
+
+  /* ── Table toolbar ── */
+  .table-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px 12px;
+  }
+
+  .table-toolbar-left {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .table-search {
+    width: 100%;
+  }
+
+  /* ── Table: horizontal scroll on small screens ── */
+  .table-section {
+    margin: 0 0 12px;
+    border-radius: 8px;
+  }
+
+  table { font-size: 11px; }
+
+  thead th,
+  tbody td {
+    padding: 8px 10px;
+  }
+
+  .table-wrapper {
+    -webkit-overflow-scrolling: touch;
+    box-shadow: inset -12px 0 10px -10px rgba(0,0,0,0.06);
+  }
+
+  /* ── Footer / pagination ── */
+  .table-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .footer-right {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .page-btn {
+    height: 30px;
+    min-width: 30px;
+    font-size: 12px;
+  }
+
+  /* ── Searchable select dropdown: never overflow viewport ── */
+  .ss-dropdown {
+    max-width: calc(100vw - 36px);
+  }
+
+  .toast {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    text-align: center;
+  }
+}
+
+/* ── Very small phones (≤400px) ── */
+@media (max-width: 400px) {
+  .report-header-title { font-size: 15px; }
+  .report-logo { height: 36px; }
+
+  table { font-size: 10.5px; }
+
+  thead th,
+  tbody td {
+    padding: 6px 8px;
+  }
+
+  .btn { font-size: 13px; }
+}
+
+@media (max-width: 400px) {
+  .report-header-title { font-size: 13px; }
+  .report-logo { height: 34px; }
+}
+
+@media (max-width: 400px) {
+  .filter-row {
+    column-gap: 12px;
+    row-gap: 12px;
+  }
+
+  .filter-actions-row {
+    gap: 8px;
+  }
+
+  .btn {
+    font-size: 12px;
+    height: 42px;
+  }
+}
+/* ── Grand Submission Summary Card ── */
+/* ── Grand Submission Summary Card (nested inside .table-section, last row) ── */
+.grand-summary-card {
+  position: relative;
+  background: linear-gradient(180deg, #eef2fb 0%, #e9eefb 100%);
+  padding: 20px 28px 22px;
+  margin: 0;                      /* was 18px 20px 4px — kills the gap you see above */
+  border-top: 2px solid #15234b;  /* separator line instead of the old top accent bar */
+  overflow: hidden;
+}
+
+.grand-summary-card::before {
+  display: none;   /* old accent bar no longer needed — border-top replaces it */
+}
+
+.grand-summary-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #15234b;
+  letter-spacing: 0.3px;
+  margin-bottom: 18px;
+}
+
+/* Equal-width grid instead of flex-wrap — keeps every stat block
+   the same size so labels/values line up in clean columns */
+.grand-summary-stats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  column-gap: 24px;
+  row-gap: 16px;
+}
+
+.grand-summary-stat {
+  min-width: 0;
+  border-right: 1px solid rgba(21,35,75,0.08);
+  padding-right: 24px;
+}
+
+.grand-summary-stat:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.grand-summary-stat .gs-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #5a6c8f;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  white-space: nowrap;
+}
+
+.grand-summary-stat .gs-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: #15234b;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .grand-summary-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .grand-summary-stat:nth-child(3n) {
+    border-right: none;
+    padding-right: 0;
+  }
+  .grand-summary-stat:not(:nth-child(3n)) {
+    border-right: 1px solid rgba(21,35,75,0.08);
+  }
+}
+
+@media (max-width: 680px) {
+  .grand-summary-card { margin: 14px 10px 4px; padding: 16px 18px 18px; }
+  .grand-summary-stats {
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: 20px;
+  }
+  .grand-summary-stat:nth-child(2n) {
+    border-right: none;
+    padding-right: 0;
+  }
+  .grand-summary-stat:not(:nth-child(2n)) {
+    border-right: 1px solid rgba(21,35,75,0.08);
+  }
+}

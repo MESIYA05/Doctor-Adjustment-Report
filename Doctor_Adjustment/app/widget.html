@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adjustment Reports</title>
+<link rel="stylesheet" href="./style.css">
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+
+<!-- Branded Report Header -->
+<header class="report-header">
+  <div class="report-header-inner">
+    <div class="report-header-brand">
+      <img
+        src="https://creatorapp.zohopublic.com.au/file//medielves/claims-management//All_Images/31559000000025010/Logo/image-download/PFxHZm68ZwuMKfkZz7yNOH7BZEes8UQN5ETOHD0bVY8Njqf0b9Zw5ZTe2XUK0CONRVfdmbQ9wteQdDnbWNCN4kVaeRZQhFrE6Tp5?filepath=/1774517256590556_Logo_design_with_green_leaf_accent.png"
+        alt="Logo"
+        class="report-logo">
+    </div>
+    <h1 class="report-header-title">Adjustment Report</h1>
+  </div>
+</header>
+
+<!-- Filter Panel -->
+<div class="filter-panel">
+  <div class="filter-row">
+
+     <div class="filter-group">
+        <label>Doctor</label>
+        <input type="text" id="f-doctor-display" class="doctor-display-field" readonly>
+        <input type="hidden" id="f-doctor" value="">
+      </div>
+
+    <div class="filter-group">
+      <label>Hospital</label>
+      <div class="searchable-select" id="ss-location">
+        <div class="ss-trigger" tabindex="0" onclick="toggleSS('ss-location')" onkeydown="ssTriggerKey(event,'ss-location')">
+          <span class="ss-label">All Locations</span>
+          <span class="ss-arrow">&#9660;</span>
+        </div>
+        <div class="ss-dropdown">
+          <div class="ss-search-wrap"><input type="text" class="ss-search" placeholder="Search hospitals…" oninput="filterSS('ss-location',this.value)" onclick="event.stopPropagation()"></div>
+          <div class="ss-list">
+            <div class="ss-option selected" data-value="">All Locations</div>
+          </div>
+        </div>
+        <input type="hidden" id="f-location" value="">
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label>Adjustment Type</label>
+      <div class="searchable-select" id="ss-adj-type">
+        <div class="ss-trigger" tabindex="0" onclick="toggleSS('ss-adj-type')" onkeydown="ssTriggerKey(event,'ss-adj-type')">
+          <span class="ss-label">All Types</span>
+          <span class="ss-arrow">&#9660;</span>
+        </div>
+        <div class="ss-dropdown">
+          <div class="ss-search-wrap"><input type="text" class="ss-search" placeholder="Search types…" oninput="filterSS('ss-adj-type',this.value)" onclick="event.stopPropagation()"></div>
+          <div class="ss-list">
+            <div class="ss-option selected" data-value="">All Types</div>
+          </div>
+        </div>
+        <input type="hidden" id="f-adj-type" value="">
+      </div>
+    </div>
+    <div class="filter-group">
+    <label for="f-patient">Patient</label>
+    <select id="f-patient" class="form-control">
+        <option value="">All Patients</option>
+    </select>
+</div>
+
+    <div class="filter-group">
+      <label>Staff</label>
+      <div class="searchable-select" id="ss-staff">
+        <div class="ss-trigger" tabindex="0" onclick="toggleSS('ss-staff')" onkeydown="ssTriggerKey(event,'ss-staff')">
+          <span class="ss-label">All Staff</span>
+          <span class="ss-arrow">&#9660;</span>
+        </div>
+        <div class="ss-dropdown">
+          <div class="ss-search-wrap"><input type="text" class="ss-search" placeholder="Search staff…" oninput="filterSS('ss-staff',this.value)" onclick="event.stopPropagation()"></div>
+          <div class="ss-list">
+            <div class="ss-option selected" data-value="">All Staff</div>
+          </div>
+        </div>
+        <input type="hidden" id="f-staff" value="">
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label>From Date</label>
+      <input type="date" id="filter-from" onclick="this.showPicker()">
+    </div>
+
+    <div class="filter-group">
+      <label>To Date</label>
+      <input type="date" id="filter-to" onclick="this.showPicker()">
+    </div>
+
+  </div>
+
+  <div class="filter-actions-row">
+    <button class="btn btn-update" onclick="applyFilters()">Update</button>
+    <button class="btn btn-reset" onclick="resetFilters()">Reset</button>
+    <button class="btn btn-pdf" onclick="exportPDF()">Export PDF</button>
+    <button class="btn btn-excel" onclick="exportExcel()">Export Excel</button>
+
+  </div>
+</div>
+
+
+<!-- Main -->
+<div class="main-content">
+  <div class="table-section">
+
+    <!-- Toolbar: search only, export moved into filter panel -->
+    <div class="table-toolbar">
+      <div class="table-toolbar-left">
+        <input type="text" class="table-search" id="table-search"
+               placeholder="Search records…" oninput="searchTable(this.value)">
+        <span id="rows-info" class="rows-info"></span>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table id="report-table">
+        <thead>
+          <tr>
+            <th onclick="sortTable('claimId')">Claim ID<span class="sort-icon"></span></th>
+            <th onclick="sortTable('date')">Claim Date<span class="sort-icon"></span></th>
+            <th onclick="sortTable('hospital')">Hospital<span class="sort-icon"></span></th>
+            <th onclick="sortTable('doctor')">Doctor<span class="sort-icon"></span></th>
+            <th onclick="sortTable('staff')">Staff<span class="sort-icon"></span></th>
+            <th onclick="sortTable('patientName')">Patient<span class="sort-icon"></span></th>
+            <th onclick="sortTable('type')">Adjustment Type<span class="sort-icon"></span></th>
+            <th>Adjustment Amount</th>
+            <th onclick="sortTable('notes')">Notes<span class="sort-icon"></span></th>
+            <th onclick="sortTable('itemNumber')">Item Number<span class="sort-icon"></span></th>
+            <th onclick="sortTable('originalAmount')">Original Amount<span class="sort-icon"></span></th>
+            <th onclick="sortTable('adjustmentAmount')">Allocated Amount<span class="sort-icon"></span></th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+      <div id="no-results" class="no-results" style="display:none;">No records match the selected filters.</div>
+    </div>
+
+    <!-- Grand Submission Summary Card — now right after the table rows -->
+    <div class="grand-summary-card" id="grand-summary-card">
+      <div class="grand-summary-title">GRAND SUBMISSION SUMMARY</div>
+      <div class="grand-summary-stats">
+        <div class="grand-summary-stat">
+          <div class="gs-label">Hospitals</div>
+          <div class="gs-value" id="gs-hospitals">0</div>
+        </div>
+        <div class="grand-summary-stat">
+          <div class="gs-label">Patients</div>
+          <div class="gs-value" id="gs-patients">0</div>
+        </div>
+        <div class="grand-summary-stat">
+          <div class="gs-label">Claims</div>
+          <div class="gs-value" id="gs-claims">0</div>
+        </div>
+        <div class="grand-summary-stat">
+          <div class="gs-label">Total Original Amount</div>
+          <div class="gs-value" id="gs-original-amount">$0.00</div>
+        </div>
+        <div class="grand-summary-stat">
+          <div class="gs-label">Total Allocated Amount</div>
+          <div class="gs-value" id="gs-allocated-amount">$0.00</div>
+        </div>
+        <div class="grand-summary-stat">
+          <div class="gs-label">Total Adjustment Amount</div>
+          <div class="gs-value" id="gs-adj-amount">$0.00</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer: record info + rows-per-page + pagination — now the last element, at the very bottom -->
+    <div class="table-footer">
+      <div class="rows-info" id="rows-info-bottom">Showing 0–0 of 0 records</div>
+      <div class="footer-right">
+        <span style="font-size:11px;color:#777;">Claims per page:</span>
+        <select class="per-page-select" id="per-page" onchange="changePerPage(this.value)">
+          <option value="10" selected>10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </div>
+       <!-- Bottom scroll proxy — mirrors table-wrapper's horizontal scroll -->
+    <div class="bottom-scroll-proxy" id="bottom-scroll-proxy">
+      <div class="bottom-scroll-proxy-inner" id="bottom-scroll-proxy-inner"></div>
+    </div>
+  </div>
+</div>
+<!-- Loading -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="loading-box">
+    <div class="loader-ring"></div>
+    <div class="loading-text-wrap">
+      <span id="loading-msg">Processing</span>
+      <span class="loading-dots"><i></i><i></i><i></i></span>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Searchable Select Logic -->
+<script>
+/* ─── Searchable Select helpers ─── */
+function toggleSS(id) {
+  const el = document.getElementById(id);
+  const isOpen = el.classList.contains('open');
+  closeAllSS();
+  if (!isOpen) {
+    el.classList.add('open');
+    const inp = el.querySelector('.ss-search');
+    if (inp) { inp.value = ''; filterSS(id, ''); setTimeout(() => inp.focus(), 60); }
+  }
+}
+
+function closeAllSS() {
+  document.querySelectorAll('.searchable-select.open').forEach(el => el.classList.remove('open'));
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.searchable-select')) closeAllSS();
+});
+
+function ssTriggerKey(e, id) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSS(id); }
+  if (e.key === 'Escape') closeAllSS();
+}
+
+function filterSS(id, q) {
+  const list = document.querySelectorAll(`#${id} .ss-list .ss-option`);
+  const lq = q.toLowerCase();
+  list.forEach(opt => {
+    opt.style.display = opt.textContent.toLowerCase().includes(lq) ? '' : 'none';
+  });
+}
+
+function selectSSOption(id, value, label) {
+  const el = document.getElementById(id);
+  el.querySelector('.ss-label').textContent = label;
+  el.querySelector('input[type=hidden]').value = value;
+  el.querySelectorAll('.ss-option').forEach(o => o.classList.toggle('selected', o.dataset.value === value));
+  closeAllSS();
+}
+
+/* Populate a searchable-select from an array of {value, label} objects */
+function populateSSDropdown(id, items, allLabel) {
+  const list = document.querySelector(`#${id} .ss-list`);
+  list.innerHTML = `<div class="ss-option selected" data-value="" onclick="selectSSOption('${id}','','${allLabel}')">${allLabel}</div>`;
+  items.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'ss-option';
+    div.dataset.value = item.value;
+    div.textContent = item.label;
+    div.onclick = () => selectSSOption(id, item.value, item.label);
+    list.appendChild(div);
+  });
+}
+</script>
+
+<script src="./script.js"></script>
+</body>
+</html>
