@@ -109,7 +109,7 @@
     <button class="btn btn-reset" onclick="resetFilters()">Reset</button>
     <button class="btn btn-pdf" onclick="exportPDF()">Export PDF</button>
     <button class="btn btn-excel" onclick="exportExcel()">Export Excel</button>
-
+    <button class="btn btn-storage" id="btn-view-storage" onclick="openSavedReportModal()" style="display:none;" title="View or download report saved in Local Storage">Saved Report</button>
   </div>
 </div>
 
@@ -208,6 +208,83 @@
     <div class="loading-text-wrap">
       <span id="loading-msg">Processing</span>
       <span class="loading-dots"><i></i><i></i><i></i></span>
+    </div>
+  </div>
+</div>
+
+<!-- MOBILE EXPORT MODAL -->
+<div id="export-modal" class="me-modal-overlay" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="me-modal-card">
+    <div class="me-modal-header">
+      <div class="me-modal-title-wrap">
+        <div id="modal-file-icon" class="export-option-icon pdf-icon">PDF</div>
+        <div>
+          <h3 class="me-modal-title">Report Ready</h3>
+          <p class="me-modal-subtitle">Download or save to your mobile device</p>
+        </div>
+      </div>
+      <button type="button" class="me-modal-close" id="modal-close-btn" aria-label="Close modal">&times;</button>
+    </div>
+
+    <div class="me-modal-body">
+      <div class="me-file-card">
+        <div class="me-file-name" id="modal-file-name">Adjustment_Report.pdf</div>
+        <div class="me-file-meta">
+          <span class="me-badge me-badge-size" id="modal-file-size">0 KB</span>
+          <span class="me-badge me-badge-success">✓ Saved in Local Storage</span>
+        </div>
+        <div class="me-storage-hint">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>Storage Path: <code id="modal-storage-path">localStorage['medi_elves_saved_pdf'] &bull; IndexedDB</code></span>
+        </div>
+      </div>
+
+      <div class="me-action-list">
+        <!-- Direct Download Link -->
+        <a class="me-action-btn me-btn-download" id="modal-download-btn" href="#" download="" target="_blank">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <div class="me-action-text">
+            <strong>Download File Directly</strong>
+            <small>Tap to download report to your device</small>
+          </div>
+        </a>
+
+        <!-- Native Share / Save to Files Link (Android / iPhone) -->
+        <button type="button" class="me-action-btn me-btn-share" id="modal-share-btn" style="display:none;">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+            <polyline points="16 6 12 2 8 6"></polyline>
+            <line x1="12" y1="2" x2="12" y2="15"></line>
+          </svg>
+          <div class="me-action-text">
+            <strong>Share / Save to Files</strong>
+            <small>Save to iCloud / Drive / Files or share with apps</small>
+          </div>
+        </button>
+
+        <!-- Preview / Open Link -->
+        <button type="button" class="me-action-btn me-btn-open" id="modal-open-btn">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+          <div class="me-action-text">
+            <strong>Open & Preview in Browser</strong>
+            <small>View report directly in new window</small>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div class="me-modal-footer">
+      <button type="button" class="btn btn-reset" id="modal-done-btn">Done</button>
     </div>
   </div>
 </div>
