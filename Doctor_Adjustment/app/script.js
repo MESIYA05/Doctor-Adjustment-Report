@@ -1199,9 +1199,9 @@ let CURRENT_EXPORT_DATA = null;
 
 function isMobileDevice() {
     const ua = navigator.userAgent || navigator.vendor || window.opera || "";
-    const isTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i.test(ua);
-    return Boolean(isMobileUA || (isTouch && window.innerWidth <= 1024));
+    const isIPadOS = /Macintosh/i.test(ua) && Boolean(navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
+    return Boolean(isMobileUA || isIPadOS);
 }
 
 function isIOS() {
@@ -1359,7 +1359,6 @@ async function saveExportToLocalStorage(blob, filename, mimeType, type, dataUrl)
         meta
     });
 
-    updateSavedReportButtonVisibility();
     return { key, meta, dataUrl };
 }
 
@@ -1405,6 +1404,93 @@ function canShareFile(file) {
     }
 }
 
+function triggerDirectMobileDownload(blob, filename, mimeType, dataUrl) {
+    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    // 1. iOS Special Handling
+    if (isIOSDevice) {
+        const blobUrl = URL.createObjectURL(blob);
+        if (mimeType === 'application/pdf') {
+            // iOS Safari & WKWebView natively render PDF when opened in a new window/tab
+            const win = window.open(blobUrl, '_blank');
+            if (!win || win.closed || typeof win.closed === 'undefined') {
+                window.location.href = blobUrl;
+            }
+            return true;
+        } else {
+            // Excel on iOS: synchronous anchor click triggers native Safari download prompt
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = filename;
+            a.setAttribute('download', filename);
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                try { document.body.removeChild(a); } catch(e){}
+            }, 1000);
+            return true;
+        }
+    }
+
+    // 2. Android: Synchronous HTML5 Anchor Click with Blob URL
+    try {
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = blobUrl;
+        a.download = filename;
+        a.setAttribute('download', filename);
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            try {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
+            } catch(e) {}
+        }, 15000);
+    } catch(err) {
+        console.warn("Synchronous blob click failed:", err);
+    }
+
+    // 3. Android WebView fallback: Data URI with application/octet-stream
+    if (dataUrl && dataUrl.startsWith('data:')) {
+        try {
+            const octetUrl = dataUrl.replace(/^data:[^;]+;/, 'data:application/octet-stream;');
+            const a2 = document.createElement('a');
+            a2.style.display = 'none';
+            a2.href = octetUrl;
+            a2.download = filename;
+            a2.setAttribute('download', filename);
+            document.body.appendChild(a2);
+            a2.click();
+            setTimeout(() => {
+                try { document.body.removeChild(a2); } catch(e){}
+            }, 1000);
+        } catch(err2) {
+            console.warn("Data URI octet-stream fallback failed:", err2);
+        }
+    }
+
+    // 4. Zoho Creator Parent URL Navigation fallback (if inside Zoho Creator container)
+    if (typeof ZOHO !== "undefined" && ZOHO.CREATOR && ZOHO.CREATOR.UTIL && 
+        typeof ZOHO.CREATOR.UTIL.navigateParentURL === "function") {
+        try {
+            const targetUrl = (dataUrl && dataUrl.length < 500000) ? dataUrl : URL.createObjectURL(blob);
+            ZOHO.CREATOR.UTIL.navigateParentURL({
+                action: "open",
+                url: targetUrl,
+                window: "new"
+            });
+        } catch(zErr) {
+            console.warn("navigateParentURL error:", zErr);
+        }
+    }
+
+    return true;
+}
+
 function triggerBrowserDownload(blob, filename) {
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1448,51 +1534,34 @@ function showMobileExportModal(exportData) {
         pathEl.innerHTML = `localStorage['medi_elves_saved_${exportData.type}'] &bull; IndexedDB`;
     }
 
-    // Setup Share button visibility & click handler
-    const shareBtn = document.getElementById("modal-share-btn");
-    if (shareBtn) {
-        const sharePossible = Boolean(exportData.fileObj && canShareFile(exportData.fileObj));
-        shareBtn.style.display = sharePossible ? "flex" : "none";
-        shareBtn.onclick = async () => {
-            try {
-                await navigator.share({
-                    files: [exportData.fileObj],
-                    title: exportData.filename
-                });
-                showToast("✓ File shared / saved successfully");
-            } catch (err) {
-                if (err.name !== "AbortError") {
-                    console.warn("Share failed:", err);
-                }
-            }
-        };
-    }
-
-    // Setup Open in Browser button
-    const openBtn = document.getElementById("modal-open-btn");
-    if (openBtn) {
-        openBtn.onclick = () => {
-            const targetUrl = exportData.blobUrl || exportData.dataUrl;
-            const win = window.open(targetUrl, "_blank");
-            if (!win) {
-                window.location.href = targetUrl;
-            }
-        };
+    const subtextEl = document.getElementById("modal-download-subtext");
+    if (subtextEl) {
+        if (isIOS() && exportData.type === "pdf") {
+            subtextEl.textContent = "Tap to view & save PDF to your device";
+        } else {
+            subtextEl.textContent = "Tap to download report to your device";
+        }
     }
 
     // Setup Download File Directly button
     const dlBtn = document.getElementById("modal-download-btn");
     if (dlBtn) {
         dlBtn.download = exportData.filename;
-        dlBtn.href = exportData.blobUrl || "#";
-        dlBtn.onclick = async (e) => {
-            e.preventDefault();
+        dlBtn.setAttribute("download", exportData.filename);
 
-            // iPhone / iPad: WebKit blocks <a download> inside iframes.
-            // Calling navigator.share on direct tap opens Apple's native "Save to Files" dialog.
+        let directHref = exportData.dataUrl || exportData.blobUrl || "#";
+        if (exportData.type === "excel" && exportData.dataUrl) {
+            directHref = exportData.dataUrl.replace(/^data:[^;]+;/, "data:application/octet-stream;");
+        }
+        dlBtn.href = directHref;
+        dlBtn.target = "_blank";
+        dlBtn.rel = "noopener noreferrer";
+
+        dlBtn.onclick = async function(e) {
+            // ── A. iPhone / iPad (iOS) ──
             if (isIOS()) {
                 let fileToShare = exportData.fileObj;
-                if (!fileToShare) {
+                if (!fileToShare && exportData.blob) {
                     try {
                         fileToShare = new File([exportData.blob], exportData.filename, {
                             type: exportData.mimeType,
@@ -1502,45 +1571,78 @@ function showMobileExportModal(exportData) {
                 }
 
                 if (fileToShare && canShareFile(fileToShare)) {
+                    e.preventDefault();
                     try {
                         await navigator.share({
                             files: [fileToShare],
                             title: exportData.filename
                         });
-                        showToast("✓ Saved successfully!");
+                        showToast("Saved successfully!");
                         setTimeout(() => closeMobileExportModal(), 800);
                         return;
                     } catch (err) {
                         if (err.name === "AbortError") {
-                            return; // User cancelled
+                            return; // User cancelled share sheet
                         }
                         console.warn("iOS share fallback:", err);
                     }
                 }
 
-                // iOS fallback if share fails: open in new tab so iOS viewer can display and save
-                const targetUrl = exportData.blobUrl || exportData.dataUrl;
-                const win = window.open(targetUrl, "_blank");
-                if (!win) {
-                    window.location.href = targetUrl;
+                // If PDF on iOS and share was not used/failed:
+                // Open in new tab so iOS's built-in PDF reader opens with the native Share/Save button
+                if (exportData.type === "pdf") {
+                    e.preventDefault();
+                    const targetUrl = exportData.blobUrl || exportData.dataUrl;
+                    const win = window.open(targetUrl, "_blank");
+                    if (!win || win.closed || typeof win.closed === "undefined") {
+                        window.location.href = targetUrl;
+                    }
+                    showToast("Opening PDF to view & save...");
+                    setTimeout(() => closeMobileExportModal(), 800);
+                    return;
                 }
-                showToast("Opening report to save...");
-                setTimeout(() => closeMobileExportModal(), 800);
+
+                // Excel on iOS: Trigger native download without preventDefault
+                try {
+                    triggerBrowserDownload(exportData.blob, exportData.filename);
+                } catch(err) {
+                    console.warn("triggerBrowserDownload failed:", err);
+                }
+                showToast("Downloading " + exportData.filename);
+                setTimeout(() => closeMobileExportModal(), 1000);
                 return;
             }
 
-            // Android & Desktop: Direct download trigger
+            // ── B. Android & Other Mobile Devices ──
+            // Do NOT preventDefault! Let the real user tap on dlBtn (with href=dataUrl/blobUrl) proceed!
+            // In addition, trigger synchronous anchor download:
             try {
                 triggerBrowserDownload(exportData.blob, exportData.filename);
-                showToast("Downloading " + exportData.filename);
-            } catch (err) {
-                console.warn("Direct download fallback:", err);
-                const targetUrl = exportData.blobUrl || exportData.dataUrl;
-                window.open(targetUrl, "_blank");
+            } catch(err) {
+                console.warn("triggerBrowserDownload failed:", err);
             }
-            setTimeout(() => {
-                closeMobileExportModal();
-            }, 1000);
+
+            // Extra fallback for Android WebView: data URI octet-stream click
+            if (exportData.dataUrl && exportData.dataUrl.startsWith("data:")) {
+                try {
+                    const octetUrl = exportData.dataUrl.replace(/^data:[^;]+;/, "data:application/octet-stream;");
+                    const a2 = document.createElement("a");
+                    a2.style.display = "none";
+                    a2.href = octetUrl;
+                    a2.download = exportData.filename;
+                    a2.setAttribute("download", exportData.filename);
+                    document.body.appendChild(a2);
+                    a2.click();
+                    setTimeout(() => {
+                        try { document.body.removeChild(a2); } catch(e){}
+                    }, 1000);
+                } catch(err2) {
+                    console.warn("Data URI octet-stream fallback failed:", err2);
+                }
+            }
+
+            showToast("Downloading " + exportData.filename);
+            setTimeout(() => closeMobileExportModal(), 1000);
         };
     }
 
@@ -1552,7 +1654,7 @@ function closeMobileExportModal() {
     if (modal) modal.classList.remove("open");
 }
 
-async function handleFileExport({ blob, filename, mimeType, type }) {
+async function handleFileExport({ blob, filename, mimeType, type, doc, wb }) {
     if (CURRENT_ACTIVE_BLOB_URL) {
         try { URL.revokeObjectURL(CURRENT_ACTIVE_BLOB_URL); } catch (e) {}
         CURRENT_ACTIVE_BLOB_URL = null;
@@ -1584,13 +1686,20 @@ async function handleFileExport({ blob, filename, mimeType, type }) {
         mimeType,
         type,
         size: blob.size,
-        date: new Date()
+        date: new Date(),
+        doc,
+        wb
     };
 
     const isMobile = isMobileDevice();
 
     if (isMobile) {
         showMobileExportModal(CURRENT_EXPORT_DATA);
+        if (!isIOS()) {
+            try {
+                triggerBrowserDownload(blob, filename);
+            } catch (e) {}
+        }
     } else {
         try {
             triggerBrowserDownload(blob, filename);
@@ -1599,70 +1708,6 @@ async function handleFileExport({ blob, filename, mimeType, type }) {
             showMobileExportModal(CURRENT_EXPORT_DATA);
         }
     }
-}
-
-async function updateSavedReportButtonVisibility() {
-    const btn = document.getElementById("btn-view-storage");
-    if (!btn) return;
-    try {
-        const pdfRecord = await getStoredExport('pdf');
-        const excelRecord = await getStoredExport('excel');
-        if (pdfRecord || excelRecord) {
-            btn.style.display = "inline-flex";
-        }
-    } catch (e) {}
-}
-
-async function openSavedReportModal() {
-    const pdfRecord = await getStoredExport('pdf');
-    const excelRecord = await getStoredExport('excel');
-
-    let chosen = null;
-    if (pdfRecord && excelRecord) {
-        const pdfTime = new Date(pdfRecord.meta.timestamp).getTime();
-        const excelTime = new Date(excelRecord.meta.timestamp).getTime();
-        chosen = pdfTime >= excelTime ? pdfRecord : excelRecord;
-    } else {
-        chosen = pdfRecord || excelRecord;
-    }
-
-    if (!chosen) {
-        showToast("No saved report found in storage");
-        return;
-    }
-
-    let blob = chosen.blob;
-    if (!blob && chosen.dataUrl) {
-        blob = dataUrlToBlob(chosen.dataUrl, chosen.meta.mimeType);
-    }
-
-    if (!blob) {
-        showToast("Could not load saved report");
-        return;
-    }
-
-    const blobUrl = URL.createObjectURL(blob);
-    let fileObj = null;
-    try {
-        fileObj = new File([blob], chosen.meta.filename, {
-            type: chosen.meta.mimeType,
-            lastModified: Date.now()
-        });
-    } catch (e) {}
-
-    CURRENT_EXPORT_DATA = {
-        blob,
-        blobUrl,
-        dataUrl: chosen.dataUrl || "",
-        fileObj,
-        filename: chosen.meta.filename,
-        mimeType: chosen.meta.mimeType,
-        type: chosen.meta.type,
-        size: chosen.meta.size,
-        date: new Date(chosen.meta.timestamp)
-    };
-
-    showMobileExportModal(CURRENT_EXPORT_DATA);
 }
 
 function initMobileExportBindings() {
@@ -1681,8 +1726,6 @@ function initMobileExportBindings() {
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") closeMobileExportModal();
     });
-
-    updateSavedReportButtonVisibility();
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -1855,14 +1898,23 @@ aoa.push([
 
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Adjustment Report');
-            const blob = workbookToBlob(wb);
             const filename = 'Adjustment_Report_' + new Date().toISOString().split('T')[0] + '.xlsx';
+
+            if (!isMobileDevice()) {
+                XLSX.writeFile(wb, filename);
+                hideLoading();
+                showToast('✓ Excel exported successfully');
+                return;
+            }
+
+            const blob = workbookToBlob(wb);
             hideLoading();
             await handleFileExport({
                 blob,
                 filename,
                 mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                type: 'excel'
+                type: 'excel',
+                wb: wb
             });
         } catch (e) { hideLoading(); showToast('Export failed: ' + e.message); }
     }, 80);
@@ -2041,22 +2093,22 @@ function drawGrandSummaryCardPDF(doc, data, mL, mR, pageW, startY) {
     const boxX = mL;
     const boxW = pageW - mL - mR;
     const padX = 6.5;
-    const boxH = 27;
+    const boxH = 24;
     const y = startY;
 
     doc.setFillColor(CARD_BG[0], CARD_BG[1], CARD_BG[2]);
     doc.setDrawColor(BORDER_LT[0], BORDER_LT[1], BORDER_LT[2]);
     doc.setLineWidth(0.3);
-    doc.roundedRect(boxX, y, boxW, boxH, 2.4, 2.4, 'FD');
+    doc.roundedRect(boxX, y, boxW, boxH, 2.2, 2.2, 'FD');
 
     doc.setDrawColor(NAVY[0], NAVY[1], NAVY[2]);
     doc.setLineWidth(1.1);
-    doc.line(boxX + 2.4, y + 0.1, boxX + boxW - 2.4, y + 0.1);
+    doc.line(boxX + 2.2, y + 0.1, boxX + boxW - 2.2, y + 0.1);
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11.5);
+    doc.setFontSize(11);
     doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
-    doc.text('GRAND SUBMISSION SUMMARY', boxX + padX, y + 8.5);
+    doc.text('GRAND SUBMISSION SUMMARY', boxX + padX, y + 7.5);
 
     const fmt = v => (v < 0 ? '- $' : '$') + Math.abs(v).toFixed(2);
 
@@ -2066,15 +2118,13 @@ function drawGrandSummaryCardPDF(doc, data, mL, mR, pageW, startY) {
         { label: ['CLAIMS'], value: String(s.claims) },
         { label: ['TOTAL ORIGINAL', 'AMOUNT'], value: '$ ' + s.originalAmountTotal.toFixed(2) },
         { label: ['TOTAL ALLOCATED', 'AMOUNT'], value: fmt(s.allocatedAmountTotal) },
-        { label: ['TOTAL ADJUSTMENT', 'AMOUNT'], value: fmt(s.adjAmountTotal) },
-        
-        
+        { label: ['TOTAL ADJUSTMENT', 'AMOUNT'], value: fmt(s.adjAmountTotal) }
     ];
 
     const colW = (boxW - padX * 2) / stats.length;
-    const labelY = y + 15.5;
-    const valueY1 = y + 20.5;
-    const valueY2 = y + 22.5;
+    const labelY = y + 14;
+    const valueY1 = y + 18.5;
+    const valueY2 = y + 20.5;
 
     stats.forEach((st, i) => {
         const cx = boxX + padX + colW * i;
@@ -2082,7 +2132,7 @@ function drawGrandSummaryCardPDF(doc, data, mL, mR, pageW, startY) {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.4);
         doc.setTextColor(LABEL_GRAY[0], LABEL_GRAY[1], LABEL_GRAY[2]);
-        st.label.forEach((ln, li) => doc.text(ln, cx, labelY + li * 3));
+        st.label.forEach((ln, li) => doc.text(ln, cx, labelY + li * 2.8));
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10.5);
         doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
@@ -2093,7 +2143,7 @@ function drawGrandSummaryCardPDF(doc, data, mL, mR, pageW, startY) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   EXPORT PDF
+   EXPORT PDF (Landscape A4)
    ───────────────────────────────────────────────────────────────────── */
 async function exportPDF() {
     showLoading('Generating PDF...');
@@ -2104,11 +2154,17 @@ async function exportPDF() {
         try {
             const { jsPDF } = window.jspdf;
 
-            const COL = [14, 15, 22, 18, 14, 15, 15, 16, 23, 10, 18, 18];
-            const pageW = 210;
-            const pageH = 297;
-            const mL = 6;
-            const mR = 6;
+            // A4 Landscape: 297mm width x 210mm height
+            const pageW = 297;
+            const pageH = 210;
+            const mL = 8;
+            const mR = 8;
+            const tableWidth = pageW - mL - mR; // 281mm
+
+            // 12 columns totaling exactly 281mm:
+            // Claim ID (20), Claim Date (20), Hospital (32), Doctor (24), Staff (20), Patient (24),
+            // Adjustment Type (24), Adjustment Amount (22), Notes (35), Item Number (18), Original Amount (21), Allocated Amount (21)
+            const COL = [20, 20, 32, 24, 20, 24, 24, 22, 35, 18, 21, 21];
 
             const NAVY = [21, 35, 75];
             const DARK_GREEN = [27, 94, 45];
@@ -2117,23 +2173,27 @@ async function exportPDF() {
             const GRAY_TXT = [110, 118, 128];
 
             const headerTopY = 8;
-            const brandH = 22;
-            const brandW = 95;
-            const badgeCx = mL + brandW + 8.2;
-            const badgeCy = headerTopY + brandH / 2 + 1;
-            const thinLineY = headerTopY + brandH + 6;
-            const infoTopY = thinLineY + 6;
-            const infoLabelY = infoTopY + 8.5;
-            const infoValueY = infoTopY + 13.5;
-            const infoBottomY = infoTopY + 17;
-            const tableStartY = infoBottomY + 5;
+            const brandH = 20;
+            const brandW = 90;
+            let brandDrawnW = brandW;
+            if (logoDataUrl) {
+                brandDrawnW = Math.min(brandW, brandH * LOGO_ASPECT);
+            }
+            const badgeCx = mL + brandDrawnW + 12;
+            const badgeCy = headerTopY + brandH / 2;
+            const thinLineY = headerTopY + brandH + 4;
+            const infoTopY = thinLineY + 4;
+            const infoLabelY = infoTopY + 5.5;
+            const infoValueY = infoTopY + 10.5;
+            const infoBottomY = infoTopY + 13.5;
+            const tableStartY = infoBottomY + 4.5;
 
-            const footerRuleY = pageH - 30;
-            const footerTitleY = footerRuleY + 5;
-            const contactRuleY = pageH - 12;
-            const contactY = pageH - 7;
+            const footerRuleY = pageH - 20;
+            const footerTitleY = footerRuleY + 4;
+            const contactRuleY = pageH - 9;
+            const contactY = pageH - 5;
 
-            const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
             function drawGradientLine(y, x1, x2, weight) {
                 const mid = x1 + (x2 - x1) * 0.72;
@@ -2146,28 +2206,20 @@ async function exportPDF() {
                 doc.circle(x2 - 1, y, 0.6, 'F');
             }
 
-
             function drawHeader(pageNumber = 1) {
                 if (pageNumber !== 1) {
-                    const logoW = 150, logoH = 55.5;
-                    if (typeof MEDI_ELVES_LOGO_BASE64 !== "undefined") {
-                        doc.addImage(MEDI_ELVES_LOGO_BASE64, "PNG", margin, 24, logoW, logoH);
-                    }
-
                     doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
-                    doc.rect(mL, headerTopY, pageW - mL - mR, 10, 'F');
+                    doc.rect(mL, 6, pageW - mL - mR, 8, 'F');
                     doc.setFont('helvetica', 'bold');
-                    doc.setFontSize(11);
+                    doc.setFontSize(9.5);
                     doc.setTextColor(255, 255, 255);
-                    doc.text('ADJUSTMENT REPORT (continued)', mL + 4, headerTopY + 6.5);
-                    drawGradientLine(thinLineY, mL, pageW - mR, 0.8);
+                    doc.text('ADJUSTMENT REPORT (continued)', mL + 4, 11.5);
+                    drawGradientLine(15.5, mL, pageW - mR, 0.7);
                     return;
                 }
 
-                let brandDrawnW = brandW;
                 if (logoDataUrl) {
                     try {
-                        brandDrawnW = Math.min(brandW, brandH * LOGO_ASPECT);
                         doc.addImage(logoDataUrl, 'PNG', mL, headerTopY, brandDrawnW, brandH);
                     } catch (e) {
                         doc.setFont('helvetica', 'bold');
@@ -2179,6 +2231,7 @@ async function exportPDF() {
                         doc.text('Keep it simple', mL, headerTopY + brandH * 0.72);
                     }
                 }
+
                 doc.setFillColor(LIGHT_GREEN[0], LIGHT_GREEN[1], LIGHT_GREEN[2]);
                 doc.circle(badgeCx, badgeCy, 8.2, 'F');
                 doc.setDrawColor(DARK_GREEN[0], DARK_GREEN[1], DARK_GREEN[2]);
@@ -2196,11 +2249,11 @@ async function exportPDF() {
                 const titleText = 'ADJUSTMENT REPORT';
                 const titleX = badgeCx + 10;
                 doc.setFont('helvetica', 'bold');
-                doc.setFontSize(19);
+                doc.setFontSize(18);
                 doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
                 const titleDims = typeof doc.getTextDimensions === 'function'
                     ? doc.getTextDimensions(titleText)
-                    : { h: 7.5 };
+                    : { h: 7 };
                 const titleY = badgeCy + (titleDims.h / 2);
                 doc.text(titleText, titleX, titleY, { align: 'left' });
 
@@ -2218,11 +2271,11 @@ async function exportPDF() {
 
                 cols.forEach((c, i) => {
                     const colX = mL + i * colW;
-                    const iconCx = colX + 5;
-                    const iconCy = (infoLabelY + infoValueY) / 2 + 0.5;
-                    const textX = colX + 10;
+                    const iconCx = colX + 4;
+                    const iconCy = (infoLabelY + infoValueY) / 2;
+                    const textX = colX + 9;
 
-                    c.icon(doc, iconCx, iconCy, 7.5, DARK_GREEN);
+                    c.icon(doc, iconCx, iconCy, 7, DARK_GREEN);
 
                     doc.setFont('helvetica', 'bold');
                     doc.setFontSize(6.4);
@@ -2238,10 +2291,10 @@ async function exportPDF() {
                     if (i > 0) {
                         doc.setDrawColor(224, 227, 232);
                         doc.setLineWidth(0.25);
-                        doc.line(colX, infoTopY - 1.5, colX, infoBottomY - 3.5);
+                        doc.line(colX, infoTopY - 1, colX, infoBottomY - 2);
                     }
                 });
-                drawGradientLine(infoBottomY, mL, pageW - mR, 1.1);
+                drawGradientLine(infoBottomY, mL, pageW - mR, 1.0);
             }
 
             function drawFooter(pageNumber, pageCount) {
@@ -2249,10 +2302,10 @@ async function exportPDF() {
                 doc.setLineWidth(0.4);
                 doc.line(mL, footerRuleY, pageW - mR, footerRuleY);
 
-                iconShield(doc, mL + 4, footerTitleY + 2.5, 8.5, DARK_GREEN);
+                iconShield(doc, mL + 4, footerTitleY + 2.5, 7.5, DARK_GREEN);
 
                 const textX = mL + 12;
-                const textW = pageW - mR - textX - 26;
+                const textW = pageW - mR - textX - 30;
                 doc.setFont('helvetica', 'bold');
                 doc.setFontSize(7.6);
                 doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
@@ -2262,12 +2315,12 @@ async function exportPDF() {
                 doc.setFontSize(7.8);
                 doc.setTextColor(GRAY_TXT[0], GRAY_TXT[1], GRAY_TXT[2]);
                 const wrapped = doc.splitTextToSize(REPORT_FOOTER_LINES[1], textW);
-                doc.text(wrapped, textX, footerTitleY + 4, { lineHeightFactor: 1.35, maxWidth: textW });
+                doc.text(wrapped, textX, footerTitleY + 3.8, { lineHeightFactor: 1.3, maxWidth: textW });
 
-                const pageBlockX = pageW - mR - 20;
+                const pageBlockX = pageW - mR - 25;
                 doc.setDrawColor(210, 214, 220);
                 doc.setLineWidth(0.3);
-                doc.line(pageBlockX, footerTitleY - 4, pageBlockX, footerTitleY + 6);
+                doc.line(pageBlockX, footerTitleY - 2, pageBlockX, footerTitleY + 5);
                 doc.setFont('helvetica', 'bold');
                 doc.setFontSize(7);
                 doc.setTextColor(60, 68, 80);
@@ -2278,7 +2331,7 @@ async function exportPDF() {
                 doc.line(mL, contactRuleY, pageW - mR, contactRuleY);
 
                 doc.setFont('helvetica', 'normal');
-                doc.setFontSize(8.10);
+                doc.setFontSize(8);
                 doc.setTextColor(70, 90, 75);
 
                 const contactWidth = pageW - mL - mR;
@@ -2292,7 +2345,7 @@ async function exportPDF() {
                     const colCenter = mL + contactWidth * ((index * 2 + 1) / 6);
                     const textWidth = doc.getTextWidth(item.text);
                     const textX = colCenter - textWidth / 2;
-                    const iconX = textX - 6;
+                    const iconX = textX - 5.5;
 
                     item.icon(doc, iconX, contactY - 1, 3.8, MID_GREEN);
                     doc.text(item.text, textX, contactY);
@@ -2304,10 +2357,10 @@ async function exportPDF() {
             const data = getDisplayData();
             doc.autoTable({
                 startY: tableStartY,
-                tableWidth: 198,
+                tableWidth: tableWidth,
 
                 head: [[
-                    'Claim ID', 'Date', 'Hospital', 'Doctor', 'Staff', 'Patient',
+                    'Claim ID', 'Claim Date', 'Hospital', 'Doctor', 'Staff', 'Patient',
                     'Adjustment Type', 'Adjustment Amount', 'Notes', 'Item Number', 'Original Amount', 'Allocated Amount'
                 ]],
 
@@ -2331,12 +2384,12 @@ async function exportPDF() {
                             ]);
                         });
                     });
-                    return rows;   // ← GRAND SUMMARY row removed, no longer pushed here
+                    return rows;
                 })(),
 
                 styles: {
-                    fontSize: 6.5,
-                    cellPadding: { top: 2.2, right: 1.8, bottom: 2.2, left: 1.8 },
+                    fontSize: 7,
+                    cellPadding: { top: 2, right: 1.6, bottom: 2, left: 1.6 },
                     overflow: 'linebreak',
                     valign: 'middle',
                     halign: 'left',
@@ -2349,17 +2402,17 @@ async function exportPDF() {
                     fillColor: [58, 90, 138],
                     textColor: [255, 255, 255],
                     fontStyle: 'bold',
-                    fontSize: 7,
+                    fontSize: 7.2,
                     halign: 'center',
                     valign: 'middle',
-                    cellPadding: { top: 2.6, right: 1.8, bottom: 2.6, left: 1.8 },
-                    minCellHeight: 7
+                    cellPadding: { top: 2.4, right: 1.6, bottom: 2.4, left: 1.6 },
+                    minCellHeight: 6.5
                 },
 
                 alternateRowStyles: { fillColor: [248, 249, 251] },
 
                 columnStyles: {
-                    0: { cellWidth: COL[0], halign: 'left', fontStyle: 'bold', fontSize: 6.5 },
+                    0: { cellWidth: COL[0], halign: 'left', fontStyle: 'bold', fontSize: 6.8 },
                     1: { cellWidth: COL[1], halign: 'center' },
                     2: { cellWidth: COL[2], halign: 'left' },
                     3: { cellWidth: COL[3], halign: 'left' },
@@ -2374,31 +2427,26 @@ async function exportPDF() {
                 },
 
                 didParseCell(d) {
-                    if (d.section === 'body' && d.column.index === 7) {
-                        const isNeg = String(d.cell.raw).startsWith('- $');
-                        d.cell.styles.textColor = isNeg ? [176, 48, 48] : [30, 126, 58];
-                        d.cell.styles.fontStyle = 'bold';
-                    }
-                    if (d.section === 'body' && d.column.index === 11) {
+                    if (d.section === 'body' && (d.column.index === 7 || d.column.index === 11)) {
                         const isNeg = String(d.cell.raw).startsWith('- $');
                         d.cell.styles.textColor = isNeg ? [176, 48, 48] : [30, 126, 58];
                         d.cell.styles.fontStyle = 'bold';
                     }
                 },
 
-                margin: { top: tableStartY, left: mL, right: mR, bottom: 34 },
+                margin: { top: 18, left: mL, right: mR, bottom: 22 },
 
                 didDrawPage(d) {
                     if (d.pageNumber > 1) drawHeader(d.pageNumber);
                 }
             });
 
-            let summaryY = doc.lastAutoTable.finalY + 6;
-            const summaryCardH = 27;
-            if (summaryY + summaryCardH > footerRuleY - 4) {
+            let summaryY = doc.lastAutoTable.finalY + 5;
+            const summaryCardH = 24;
+            if (summaryY + summaryCardH > footerRuleY - 3) {
                 doc.addPage();
                 drawHeader(doc.internal.getNumberOfPages());
-                summaryY = tableStartY;
+                summaryY = 18;
             }
             drawGrandSummaryCardPDF(doc, data, mL, mR, pageW, summaryY);
 
@@ -2408,14 +2456,23 @@ async function exportPDF() {
                 drawFooter(p, pageCount);
             }
 
-            const pdfBlob = doc.output('blob');
             const filename = 'Adjustment_Report_' + new Date().toISOString().split('T')[0] + '.pdf';
+
+            if (!isMobileDevice()) {
+                doc.save(filename);
+                hideLoading();
+                showToast('✓ PDF exported successfully');
+                return;
+            }
+
+            const pdfBlob = doc.output('blob');
             hideLoading();
             await handleFileExport({
                 blob: pdfBlob,
                 filename,
                 mimeType: 'application/pdf',
-                type: 'pdf'
+                type: 'pdf',
+                doc: doc
             });
         } catch (e) { hideLoading(); showToast('Export failed: ' + e.message); }
     }, 80);

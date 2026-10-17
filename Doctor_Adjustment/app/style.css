@@ -479,8 +479,6 @@ body {
 .btn-excel:hover   { background: #1a5c38; }
 .btn-pdf     { background: #c0392b; color: #fff; }
 .btn-pdf:hover     { background: #a93226; }
-.btn-storage { background: #EEF2FF; color: #4F46E5; border: 1px solid #C7D2FE; font-weight: 600; }
-.btn-storage:hover { background: #E0E7FF; color: #4338CA; }
 
 /* ── Main content ── */
 .main-content { padding: 0 20px 14px; }
@@ -1416,24 +1414,6 @@ tbody td[rowspan] {
 .me-btn-download:hover {
   box-shadow: 0 6px 20px rgba(91, 62, 245, 0.45);
   transform: translateY(-1px);
-}
-.me-btn-share {
-  background: #F0FDF4;
-  color: #166534;
-  border-color: #BBF7D0;
-}
-.me-btn-share:hover {
-  background: #DCFCE7;
-  border-color: #86EFAC;
-}
-.me-btn-open {
-  background: #F8FAFC;
-  color: #334155;
-  border-color: #CBD5E1;
-}
-.me-btn-open:hover {
-  background: #F1F5F9;
-  border-color: #94A3B8;
 }
 .me-modal-footer {
   padding: 14px 20px;
