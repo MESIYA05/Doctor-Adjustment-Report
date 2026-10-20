@@ -1536,7 +1536,7 @@ function showMobileExportModal(exportData) {
                     // Share sheet unavailable (e.g. blocked inside the Creator frame): download the file
                     // directly instead. Safari saves it to Downloads (iCloud Drive/Downloads if enabled).
                     if (downloadExport(exportData)) {
-                        setExportStatus("Download started - open the Files app and check the Downloads folder.");
+                        setExportStatus("Download requested - check Files > Downloads. If no file appears, this Zoho view blocks downloads from the page (see Share / browser).", false);
                     } else {
                         setExportStatus("Could not save the file (" + (exportData.lastError || result) + ").", true);
                     }
@@ -1545,7 +1545,7 @@ function showMobileExportModal(exportData) {
             }
 
             if (downloadExport(exportData)) {
-                setExportStatus("Download started - check your notifications or the Downloads folder.");
+                setExportStatus("Download requested - check your notifications or the Downloads folder. If no file appears, this Zoho view blocks downloads from the page.", false);
             } else {
                 setExportStatus("Download is blocked in this view. Try \"Share / Save to Drive\" below.", true);
             }
