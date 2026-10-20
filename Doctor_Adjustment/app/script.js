@@ -1515,39 +1515,40 @@ function showMobileExportModal(exportData) {
 
     const subtextEl = document.getElementById("modal-download-subtext");
     if (subtextEl) {
-        if (isIOS()) {
-            subtextEl.textContent = "Tap to save to Files / iCloud Drive";
-        } else {
-            subtextEl.textContent = "Tap to download report to your device";
-        }
+        subtextEl.textContent = isIOS()
+            ? "Tap to save to iCloud Drive / Files"
+            : "Tap to download to your device";
     }
 
-    // Setup Download File Directly button
     const dlBtn = document.getElementById("modal-download-btn");
     if (dlBtn) {
         dlBtn.download = exportData.filename;
         dlBtn.setAttribute("download", exportData.filename);
 
         if (isIOS()) {
-            // iOS: always prevent default anchor navigation; we drive everything via share sheet
+            // iOS: the anchor must NOT navigate on its own.
+            // All download logic is driven from onclick via navigator.share().
             dlBtn.href = "#";
             dlBtn.removeAttribute("target");
+            dlBtn.rel = "noopener noreferrer";
         } else {
-            // Android: set href to blobUrl (or dataUrl fallback) so the native
-            // DownloadManager gets exactly ONE download opportunity via the anchor.
-            // We call e.preventDefault() to stop the anchor navigating AND
-            // manually fire a single programmatic anchor click with the same URL.
+            // Android / Desktop: the REAL user-tap on this anchor is the download.
+            // href points to the blob URL (works in Chrome) with dataUrl fallback (WebView).
+            // Do NOT add any extra programmatic clicks — that caused the double-download.
             dlBtn.href = exportData.blobUrl || exportData.dataUrl || "#";
             dlBtn.target = "_blank";
             dlBtn.rel = "noopener noreferrer";
         }
 
         dlBtn.onclick = async function(e) {
-            e.preventDefault(); // Always prevent default — we control the download entirely
 
-            // ── iOS: Save to Files / iCloud Drive ──
-            // Primary: Web Share API with File object → iOS shows "Save to Files" picker
+            // ═══════════════════════════════════════════════════════
+            // iOS — Save to iCloud Drive / Files App
+            // ═══════════════════════════════════════════════════════
             if (isIOS()) {
+                e.preventDefault(); // stop anchor from navigating
+
+                // Build File object for share sheet
                 let fileToShare = exportData.fileObj;
                 if (!fileToShare && exportData.blob) {
                     try {
@@ -1555,80 +1556,51 @@ function showMobileExportModal(exportData) {
                             type: exportData.mimeType,
                             lastModified: Date.now()
                         });
-                    } catch (err) {
-                        console.warn("File construction failed:", err);
+                    } catch (ferr) {
+                        console.warn("File() construction failed:", ferr);
                     }
                 }
 
-                if (fileToShare && canShareFile(fileToShare)) {
+                // Primary: navigator.share() → native iOS Share Sheet → "Save to Files" / iCloud Drive
+                if (navigator.share && fileToShare) {
                     try {
                         await navigator.share({
                             files: [fileToShare],
                             title: exportData.filename
                         });
-                        showToast("Saved to Files / iCloud Drive!");
+                        showToast("Saved to iCloud Drive / Files!");
                         setTimeout(() => closeMobileExportModal(), 800);
                         return;
-                    } catch (err) {
-                        if (err.name === "AbortError") {
-                            // User cancelled the share sheet — do nothing
+                    } catch (shareErr) {
+                        if (shareErr.name === "AbortError") {
+                            // User deliberately cancelled the share sheet — do nothing
                             return;
                         }
-                        console.warn("Share API failed, trying dataUrl fallback:", err);
+                        console.warn("navigator.share() failed:", shareErr);
+                        // fall through to dataUrl fallback
                     }
                 }
 
-                // iOS Fallback: navigate to dataUrl (base64) so Safari shows download prompt
-                // (blobUrl can only be rendered as in-app preview; dataUrl triggers download dialog)
-                const fallbackUrl = exportData.dataUrl || exportData.blobUrl;
-                if (fallbackUrl) {
-                    try {
-                        window.location.href = fallbackUrl;
-                    } catch (navErr) {
-                        console.warn("Navigation fallback failed:", navErr);
+                // Fallback: navigate to dataUrl so Safari shows its own download/open dialog.
+                // NOTE: blobUrl only shows in-app preview on iOS; dataUrl triggers the save dialog.
+                const iosFallback = exportData.dataUrl || exportData.blobUrl;
+                if (iosFallback) {
+                    try { window.location.href = iosFallback; } catch (navErr) {
+                        console.warn("window.location fallback failed:", navErr);
                     }
                 }
-                showToast("Opening for download...");
+                showToast("Opening download dialog...");
                 setTimeout(() => closeMobileExportModal(), 1000);
                 return;
             }
 
-            // ── Android & Other Mobile Devices ──
-            // Fire exactly ONE programmatic anchor click with the blob URL.
-            // Do NOT also trigger the anchor's natural navigation (we called preventDefault).
-            const dlUrl = exportData.blobUrl || exportData.dataUrl;
-            if (dlUrl) {
-                try {
-                    const a = document.createElement("a");
-                    a.style.display = "none";
-                    a.href = dlUrl;
-                    a.download = exportData.filename;
-                    a.setAttribute("download", exportData.filename);
-                    document.body.appendChild(a);
-                    a.click();
-                    setTimeout(() => {
-                        try { document.body.removeChild(a); } catch(cleanErr) {}
-                    }, 15000);
-                } catch (anchorErr) {
-                    console.warn("Anchor click failed:", anchorErr);
-
-                    // Last resort: Zoho Creator navigateParentURL
-                    if (typeof ZOHO !== "undefined" && ZOHO.CREATOR && ZOHO.CREATOR.UTIL &&
-                        typeof ZOHO.CREATOR.UTIL.navigateParentURL === "function") {
-                        try {
-                            const zohoUrl = (exportData.dataUrl && exportData.dataUrl.length < 500000)
-                                ? exportData.dataUrl
-                                : (exportData.blobUrl || "");
-                            if (zohoUrl) {
-                                ZOHO.CREATOR.UTIL.navigateParentURL({ action: "open", url: zohoUrl, window: "new" });
-                            }
-                        } catch(zErr) {
-                            console.warn("navigateParentURL error:", zErr);
-                        }
-                    }
-                }
-            }
-
+            // ═══════════════════════════════════════════════════════
+            // Android — Let the natural anchor tap do the download.
+            // The href is already set to blobUrl/dataUrl above.
+            // We do NOT call e.preventDefault() and we do NOT fire
+            // any extra programmatic anchor clicks.
+            // Just show the toast and close the modal.
+            // ═══════════════════════════════════════════════════════
             showToast("Downloading " + exportData.filename);
             setTimeout(() => closeMobileExportModal(), 1200);
         };
