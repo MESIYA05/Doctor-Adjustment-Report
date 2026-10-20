@@ -241,36 +241,18 @@
       </div>
 
       <div class="me-action-list">
-        <!-- Primary: iOS = share sheet (Save to Files / iCloud Drive), Android = direct download.
-             Label text is set in showMobileExportModal(). -->
-        <button type="button" class="me-action-btn me-btn-download" id="modal-download-btn">
+        <!-- Direct Download Link -->
+        <a class="me-action-btn me-btn-download" id="modal-download-btn" href="#" download="" target="_blank">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
           <div class="me-action-text">
-            <strong>Download File</strong>
-            <small>Saves to your device</small>
+            <strong>Download File Directly</strong>
+            <small id="modal-download-subtext">Tap to download report to your device</small>
           </div>
-        </button>
-
-        <!-- Android only: system share sheet (Drive, Files, ...) -->
-        <button type="button" class="me-action-btn me-btn-secondary" id="modal-share-btn" hidden>
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="18" cy="5" r="3"></circle>
-            <circle cx="6" cy="12" r="3"></circle>
-            <circle cx="18" cy="19" r="3"></circle>
-            <line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line>
-            <line x1="15.4" y1="6.5" x2="8.6" y2="10.5"></line>
-          </svg>
-          <div class="me-action-text">
-            <strong>Share / Save to Drive</strong>
-            <small>Pick Google Drive, Files or another app</small>
-          </div>
-        </button>
-
-        <div class="me-modal-status" id="modal-status" role="status" style="display:none;"></div>
+        </a>
       </div>
     </div>
 

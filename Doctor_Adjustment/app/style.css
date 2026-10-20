@@ -1415,30 +1415,6 @@ tbody td[rowspan] {
   box-shadow: 0 6px 20px rgba(91, 62, 245, 0.45);
   transform: translateY(-1px);
 }
-.me-action-btn[hidden] {
-  display: none;
-}
-.me-btn-secondary {
-  background: #ffffff;
-  color: #334155;
-  border-color: #d9dce6;
-}
-.me-btn-secondary:hover {
-  border-color: #5B3EF5;
-  color: #5B3EF5;
-}
-.me-modal-status {
-  font-size: 12px;
-  line-height: 1.4;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: #eef6ff;
-  color: #1e3a5f;
-}
-.me-modal-status.error {
-  background: #fff1f0;
-  color: #9a2a1f;
-}
 .me-modal-footer {
   padding: 14px 20px;
   display: flex;

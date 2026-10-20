@@ -175,14 +175,6 @@ async function initWidget() {
         const loginUserEmail = (initParams && initParams.loginUser) ? initParams.loginUser.toLowerCase() : '';
 
         const matchedDoctor = doctors.find(doc => {
-            // Try matching by email first (primary)
-            const email = (doc.Email || doc.Doctor_Email || doc.email || '').toLowerCase();
-            if (email && email === loginUserEmail) return true;
-            // Fallback: match by doctor name if email not available
-            const name = (doc.Doctor_Name || doc.Name || doc.Full_Name || '').toLowerCase();
-            if (name && loginUserEmail && name.includes(loginUserEmail.split('@')[0])) return true;
-            return false;
-        });
             const email = (doc.Email || doc.Doctor_Email || doc.email || '').toLowerCase();
             return email && email === loginUserEmail;
         });
@@ -1260,23 +1252,18 @@ function dataUrlToBlob(dataUrl, fallbackMime) {
 
 function workbookToBlob(workbook) {
     try {
-        const u8 = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-        return new Blob([u8], {
+        const arrayBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+        return new Blob([arrayBuffer], {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         });
     } catch (e) {
-        try {
-            const binary = XLSX.write(workbook, { bookType: "xlsx", type: "binary" });
-            const len = binary.length;
-            const view = new Uint8Array(len);
-            for (let i = 0; i < len; i++) view[i] = binary.charCodeAt(i) & 0xFF;
-            return new Blob([view], {
-                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            });
-        } catch (e2) {
-            console.error("workbookToBlob failed:", e2);
-            return null;
-        }
+        const binary = XLSX.write(workbook, { bookType: "xlsx", type: "binary" });
+        const buf = new ArrayBuffer(binary.length);
+        const view = new Uint8Array(buf);
+        for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i) & 0xFF;
+        return new Blob([buf], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        });
     }
 }
 
@@ -1307,17 +1294,12 @@ async function saveExportToIndexedDB(id, record) {
     try {
         const db = await openExportDB();
         if (!db) return false;
-        return await new Promise((resolve) => {
-            try {
-                const tx = db.transaction("exports", "readwrite");
-                const store = tx.objectStore("exports");
-                store.put({ id, ...record });
-                tx.oncomplete = () => resolve(true);
-                tx.onerror = () => resolve(false);
-                tx.onabort = () => resolve(false);
-            } catch (txErr) {
-                resolve(false);
-            }
+        return new Promise((resolve) => {
+            const tx = db.transaction("exports", "readwrite");
+            const store = tx.objectStore("exports");
+            store.put({ id, ...record });
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
         });
     } catch (e) {
         console.warn("IndexedDB save error:", e);
@@ -1409,111 +1391,104 @@ async function getStoredExport(type) {
     return null;
 }
 
-/* --- Saving / sharing the generated file ---------------------------------
-   A web page cannot silently write into iCloud Drive or pick an Android folder.
-   The closest the platforms allow is:
-     iOS     -> native share sheet (Web Share API) -> "Save to Files" -> iCloud Drive
-     Android -> <a download> of the blob -> Downloads folder (share sheet as an alternative)
-   Both need a fresh tap. The file is built asynchronously, so the tap on
-   "Export PDF/Excel" has expired by the time it is ready - hence the modal. */
-
-function getShareFile(d) {
-    if (d.fileObj) return d.fileObj;
+/* --- Web Share API & Browser Downloads --- */
+function canShareFile(file) {
     try {
-        d.fileObj = new File([d.blob], d.filename, { type: d.mimeType, lastModified: Date.now() });
-    } catch (e) {
-        d.fileObj = null;
-    }
-    return d.fileObj;
-}
-
-function canShareExport(d) {
-    try {
-        const file = getShareFile(d);
-        if (!file || !navigator.share) return false;
-        return navigator.canShare ? navigator.canShare({ files: [file] }) : true;
+        return Boolean(
+            navigator.share &&
+            navigator.canShare &&
+            navigator.canShare({ files: [file] })
+        );
     } catch (e) {
         return false;
     }
 }
 
-// Returns 'shared' | 'cancelled' | 'unsupported' | 'failed'.
-// Must be called synchronously from a tap handler (before any await).
-async function shareExport(d) {
-    if (!canShareExport(d)) return 'unsupported';
-    try {
-        await navigator.share({ files: [getShareFile(d)], title: d.filename });
-        return 'shared';
-    } catch (e) {
-        if (e && e.name === 'AbortError') return 'cancelled';
-        console.warn('navigator.share() failed:', e);
-        d.lastError = (e && e.name) || 'unknown';
-        return 'failed';
+function triggerDirectMobileDownload(blob, filename, mimeType, dataUrl) {
+    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    // 1. iOS Special Handling
+    if (isIOSDevice) {
+        const blobUrl = URL.createObjectURL(blob);
+        if (mimeType === 'application/pdf') {
+            // iOS Safari & WKWebView natively render PDF when opened in a new window/tab
+            const win = window.open(blobUrl, '_blank');
+            if (!win || win.closed || typeof win.closed === 'undefined') {
+                window.location.href = blobUrl;
+            }
+            return true;
+        } else {
+            // Excel on iOS: synchronous anchor click triggers native Safari download prompt
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = filename;
+            a.setAttribute('download', filename);
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                try { document.body.removeChild(a); } catch(e){}
+            }, 1000);
+            return true;
+        }
     }
-}
 
-function downloadExport(d) {
-  // Detect platform
-  const ua = navigator.userAgent || navigator.vendor || window.opera;
-  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
-  const isAndroid = /Android/.test(ua);
-
-  if (isIOS) {
-    // On iOS use Web Share API to allow saving to iCloud Drive or other apps
-    return shareExport(d).then(result => {
-      if (result && result !== 'unsupported') {
-        setExportStatus('Export shared via iOS share sheet.', false);
-        return true;
-      } else {
-        setExportStatus('Sharing is not available on this iOS device.', true);
-        return false;
-      }
-    });
-  }
-
-  if (isAndroid) {
-    // On Android we persist the export in localStorage and trigger a direct download
-    // Save to IndexedDB/localStorage first (already done in handleFileExport)
-    // Create a temporary link to download the blob
+    // 2. Android: Synchronous HTML5 Anchor Click with Blob URL
     try {
-      const url = URL.createObjectURL(d.blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = d.filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setExportStatus('Export downloaded (Android).', false);
-      return true;
-    } catch (e) {
-      console.error('Android download failed:', e);
-      setExportStatus('Could not download on Android: ' + e.message, true);
-      return false;
-    }
-  }
-
-  // Fallback for other platforms
-  if (canShareExport(d)) {
-    return shareExport(d);
-  }
-  setExportStatus('Export not supported on this platform.', true);
-  return false;
-}
-    try {
+        const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.style.display = 'none';
-        a.href = d.blobUrl;
-        a.download = d.filename;
-        a.rel = 'noopener';
+        a.href = blobUrl;
+        a.download = filename;
+        a.setAttribute('download', filename);
         document.body.appendChild(a);
         a.click();
-        setTimeout(() => { try { document.body.removeChild(a); } catch (e) {} }, 1000);
-        return true;
-    } catch (e) {
-        console.warn('Anchor download failed:', e);
-        return false;
+        setTimeout(() => {
+            try {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
+            } catch(e) {}
+        }, 15000);
+    } catch(err) {
+        console.warn("Synchronous blob click failed:", err);
     }
+
+    // 3. Android WebView fallback: Data URI with application/octet-stream
+    if (dataUrl && dataUrl.startsWith('data:')) {
+        try {
+            const octetUrl = dataUrl.replace(/^data:[^;]+;/, 'data:application/octet-stream;');
+            const a2 = document.createElement('a');
+            a2.style.display = 'none';
+            a2.href = octetUrl;
+            a2.download = filename;
+            a2.setAttribute('download', filename);
+            document.body.appendChild(a2);
+            a2.click();
+            setTimeout(() => {
+                try { document.body.removeChild(a2); } catch(e){}
+            }, 1000);
+        } catch(err2) {
+            console.warn("Data URI octet-stream fallback failed:", err2);
+        }
+    }
+
+    // 4. Zoho Creator Parent URL Navigation fallback (if inside Zoho Creator container)
+    if (typeof ZOHO !== "undefined" && ZOHO.CREATOR && ZOHO.CREATOR.UTIL && 
+        typeof ZOHO.CREATOR.UTIL.navigateParentURL === "function") {
+        try {
+            const targetUrl = (dataUrl && dataUrl.length < 500000) ? dataUrl : URL.createObjectURL(blob);
+            ZOHO.CREATOR.UTIL.navigateParentURL({
+                action: "open",
+                url: targetUrl,
+                window: "new"
+            });
+        } catch(zErr) {
+            console.warn("navigateParentURL error:", zErr);
+        }
+    }
+
+    return true;
 }
 
 function triggerBrowserDownload(blob, filename) {
@@ -1533,37 +1508,9 @@ function triggerBrowserDownload(blob, filename) {
     }, 60000);
 }
 
-// One-line capability report so a failed save on a real phone can be diagnosed.
-function exportDiagnostics(d) {
-    const ua = navigator.userAgent || "";
-    const webview = /; wv\)|Version\/[\d.]+ Chrome|FBAN|FBAV|Zoho/i.test(ua) ||
-        (isIOS() && !/Safari/i.test(ua));
-    let share = "no", canShare = "no";
-    try { share = navigator.share ? "yes" : "no"; } catch (e) {}
-    try { canShare = canShareExport(d) ? "yes" : "no"; } catch (e) {}
-    let framed = "no";
-    try { framed = window.top !== window.self ? "yes" : "no"; } catch (e) { framed = "yes"; }
-    return "[" + (isIOS() ? "iOS" : isAndroid() ? "Android" : "other") +
-        " webview=" + (webview ? "yes" : "no") +
-        " framed=" + framed +
-        " share=" + share +
-        " canShareFile=" + canShare +
-        (d && d.lastError ? " shareError=" + d.lastError : "") + "]";
-}
-
-function setExportStatus(msg, isError) {
-    const el = document.getElementById("modal-status");
-    if (!el) return;
-    el.textContent = msg || "";
-    el.classList.toggle("error", Boolean(isError));
-    el.style.display = msg ? "block" : "none";
-}
-
 function showMobileExportModal(exportData) {
     const modal = document.getElementById("export-modal");
     if (!modal) return;
-
-    const ios = isIOS();
 
     const iconEl = document.getElementById("modal-file-icon");
     if (iconEl) {
@@ -1587,52 +1534,115 @@ function showMobileExportModal(exportData) {
         pathEl.innerHTML = `localStorage['medi_elves_saved_${exportData.type}'] &bull; IndexedDB`;
     }
 
-    setExportStatus("");
+    const subtextEl = document.getElementById("modal-download-subtext");
+    if (subtextEl) {
+        if (isIOS() && exportData.type === "pdf") {
+            subtextEl.textContent = "Tap to view & save PDF to your device";
+        } else {
+            subtextEl.textContent = "Tap to download report to your device";
+        }
+    }
 
+    // Setup Download File Directly button
     const dlBtn = document.getElementById("modal-download-btn");
-    const shareBtn = document.getElementById("modal-share-btn");
-
-    // Primary action
     if (dlBtn) {
-        dlBtn.querySelector("strong").textContent = ios ? "Save to iCloud Drive / Files" : "Download File";
-        dlBtn.querySelector("small").textContent = ios
-            ? "Opens the share sheet - choose Save to Files, then iCloud Drive"
-            : "Saves to your Downloads folder";
+        dlBtn.download = exportData.filename;
+        dlBtn.setAttribute("download", exportData.filename);
 
-        dlBtn.onclick = async function () {
-            if (ios) {
-                const result = await shareExport(exportData);
-                if (result === "shared") {
-                    showToast("Saved - check the Files app");
-                    setTimeout(closeMobileExportModal, 800);
-                } else if (result !== "cancelled") {
-                    // Share sheet unavailable (e.g. blocked inside the Creator frame): download the file
-                    // directly instead. Safari saves it to Downloads (iCloud Drive/Downloads if enabled).
-                    if (downloadExport(exportData)) {
-                        setExportStatus("Download requested - check Files > Downloads. If no file appears, this Zoho view blocks downloads. " + exportDiagnostics(exportData), false);
-                    } else {
-                        setExportStatus("Could not save the file. " + exportDiagnostics(exportData), true);
+        let directHref = exportData.dataUrl || exportData.blobUrl || "#";
+        if (exportData.type === "excel" && exportData.dataUrl) {
+            directHref = exportData.dataUrl.replace(/^data:[^;]+;/, "data:application/octet-stream;");
+        }
+        dlBtn.href = directHref;
+        dlBtn.target = "_blank";
+        dlBtn.rel = "noopener noreferrer";
+
+        dlBtn.onclick = async function(e) {
+            // ── A. iPhone / iPad (iOS) ──
+            if (isIOS()) {
+                let fileToShare = exportData.fileObj;
+                if (!fileToShare && exportData.blob) {
+                    try {
+                        fileToShare = new File([exportData.blob], exportData.filename, {
+                            type: exportData.mimeType,
+                            lastModified: Date.now()
+                        });
+                    } catch (err) {}
+                }
+
+                if (fileToShare && canShareFile(fileToShare)) {
+                    e.preventDefault();
+                    try {
+                        await navigator.share({
+                            files: [fileToShare],
+                            title: exportData.filename
+                        });
+                        showToast("Saved successfully!");
+                        setTimeout(() => closeMobileExportModal(), 800);
+                        return;
+                    } catch (err) {
+                        if (err.name === "AbortError") {
+                            return; // User cancelled share sheet
+                        }
+                        console.warn("iOS share fallback:", err);
                     }
                 }
+
+                // If PDF on iOS and share was not used/failed:
+                // Open in new tab so iOS's built-in PDF reader opens with the native Share/Save button
+                if (exportData.type === "pdf") {
+                    e.preventDefault();
+                    const targetUrl = exportData.blobUrl || exportData.dataUrl;
+                    const win = window.open(targetUrl, "_blank");
+                    if (!win || win.closed || typeof win.closed === "undefined") {
+                        window.location.href = targetUrl;
+                    }
+                    showToast("Opening PDF to view & save...");
+                    setTimeout(() => closeMobileExportModal(), 800);
+                    return;
+                }
+
+                // Excel on iOS: Trigger native download without preventDefault
+                try {
+                    triggerBrowserDownload(exportData.blob, exportData.filename);
+                } catch(err) {
+                    console.warn("triggerBrowserDownload failed:", err);
+                }
+                showToast("Downloading " + exportData.filename);
+                setTimeout(() => closeMobileExportModal(), 1000);
                 return;
             }
 
-            if (downloadExport(exportData)) {
-                setExportStatus("Download requested - check your notifications or the Downloads folder. If no file appears, this Zoho view blocks downloads. " + exportDiagnostics(exportData), false);
-            } else {
-                setExportStatus("Download is blocked in this view. " + exportDiagnostics(exportData), true);
+            // ── B. Android & Other Mobile Devices ──
+            // Do NOT preventDefault! Let the real user tap on dlBtn (with href=dataUrl/blobUrl) proceed!
+            // In addition, trigger synchronous anchor download:
+            try {
+                triggerBrowserDownload(exportData.blob, exportData.filename);
+            } catch(err) {
+                console.warn("triggerBrowserDownload failed:", err);
             }
-        };
-    }
 
-    // Secondary: share sheet on Android (Drive, Files, WhatsApp...). On iOS it is the primary button.
-    if (shareBtn) {
-        shareBtn.hidden = ios || !canShareExport(exportData);
-        shareBtn.onclick = async function () {
-            const result = await shareExport(exportData);
-            if (result === "failed" || result === "unsupported") {
-                setExportStatus("Sharing is not available in this view. " + exportDiagnostics(exportData), true);
+            // Extra fallback for Android WebView: data URI octet-stream click
+            if (exportData.dataUrl && exportData.dataUrl.startsWith("data:")) {
+                try {
+                    const octetUrl = exportData.dataUrl.replace(/^data:[^;]+;/, "data:application/octet-stream;");
+                    const a2 = document.createElement("a");
+                    a2.style.display = "none";
+                    a2.href = octetUrl;
+                    a2.download = exportData.filename;
+                    a2.setAttribute("download", exportData.filename);
+                    document.body.appendChild(a2);
+                    a2.click();
+                    setTimeout(() => {
+                        try { document.body.removeChild(a2); } catch(e){}
+                    }, 1000);
+                } catch(err2) {
+                    console.warn("Data URI octet-stream fallback failed:", err2);
+                }
             }
+
+            showToast("Downloading " + exportData.filename);
+            setTimeout(() => closeMobileExportModal(), 1000);
         };
     }
 
@@ -1644,7 +1654,7 @@ function closeMobileExportModal() {
     if (modal) modal.classList.remove("open");
 }
 
-async function handleFileExport({ blob, filename, mimeType, type, doc, wb, dataUrl }) {
+async function handleFileExport({ blob, filename, mimeType, type, doc, wb }) {
     if (CURRENT_ACTIVE_BLOB_URL) {
         try { URL.revokeObjectURL(CURRENT_ACTIVE_BLOB_URL); } catch (e) {}
         CURRENT_ACTIVE_BLOB_URL = null;
@@ -1653,19 +1663,14 @@ async function handleFileExport({ blob, filename, mimeType, type, doc, wb, dataU
     const blobUrl = URL.createObjectURL(blob);
     CURRENT_ACTIVE_BLOB_URL = blobUrl;
 
-    if (!dataUrl) {
-        try {
-            dataUrl = await blobToDataUrl(blob);
-        } catch (e) {
-            console.warn("Could not create dataUrl:", e);
-        }
+    let dataUrl = "";
+    try {
+        dataUrl = await blobToDataUrl(blob);
+    } catch (e) {
+        console.warn("Could not create dataUrl:", e);
     }
 
-    // Persisting a copy is best-effort and must never block the Save button:
-    // Safari can hang or throw on IndexedDB/localStorage inside a cross-origin iframe.
-    saveExportToLocalStorage(blob, filename, mimeType, type, dataUrl).catch((e) => {
-        console.warn("Could not persist export copy:", e);
-    });
+    await saveExportToLocalStorage(blob, filename, mimeType, type, dataUrl);
 
     let fileObj = null;
     try {
@@ -1690,6 +1695,11 @@ async function handleFileExport({ blob, filename, mimeType, type, doc, wb, dataU
 
     if (isMobile) {
         showMobileExportModal(CURRENT_EXPORT_DATA);
+        if (!isIOS()) {
+            try {
+                triggerBrowserDownload(blob, filename);
+            } catch (e) {}
+        }
     } else {
         try {
             triggerBrowserDownload(blob, filename);
@@ -1898,22 +1908,13 @@ aoa.push([
             }
 
             const blob = workbookToBlob(wb);
-            let dataUrl = "";
-            try {
-                const base64 = XLSX.write(wb, { bookType: "xlsx", type: "base64" });
-                dataUrl = "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64," + base64;
-            } catch (bErr) {
-                console.warn("Direct base64 failed, falling back:", bErr);
-            }
-
             hideLoading();
             await handleFileExport({
                 blob,
                 filename,
                 mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 type: 'excel',
-                wb: wb,
-                dataUrl: dataUrl
+                wb: wb
             });
         } catch (e) { hideLoading(); showToast('Export failed: ' + e.message); }
     }, 80);
@@ -2465,21 +2466,13 @@ async function exportPDF() {
             }
 
             const pdfBlob = doc.output('blob');
-            let dataUrl = "";
-            try {
-                dataUrl = doc.output('datauristring');
-            } catch (pErr) {
-                console.warn("PDF datauristring failed:", pErr);
-            }
-
             hideLoading();
             await handleFileExport({
                 blob: pdfBlob,
                 filename,
                 mimeType: 'application/pdf',
                 type: 'pdf',
-                doc: doc,
-                dataUrl: dataUrl
+                doc: doc
             });
         } catch (e) { hideLoading(); showToast('Export failed: ' + e.message); }
     }, 80);
