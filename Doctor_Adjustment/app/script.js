@@ -1299,12 +1299,17 @@ async function saveExportToIndexedDB(id, record) {
     try {
         const db = await openExportDB();
         if (!db) return false;
-        return new Promise((resolve) => {
-            const tx = db.transaction("exports", "readwrite");
-            const store = tx.objectStore("exports");
-            store.put({ id, ...record });
-            tx.oncomplete = () => resolve(true);
-            tx.onerror = () => resolve(false);
+        return await new Promise((resolve) => {
+            try {
+                const tx = db.transaction("exports", "readwrite");
+                const store = tx.objectStore("exports");
+                store.put({ id, ...record });
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = () => resolve(false);
+                tx.onabort = () => resolve(false);
+            } catch (txErr) {
+                resolve(false);
+            }
         });
     } catch (e) {
         console.warn("IndexedDB save error:", e);
@@ -1396,78 +1401,73 @@ async function getStoredExport(type) {
     return null;
 }
 
-/* --- Web Share API & Browser Downloads --- */
-function canShareFile(file) {
+/* --- Saving / sharing the generated file ---------------------------------
+   A web page cannot silently write into iCloud Drive or pick an Android folder.
+   The closest the platforms allow is:
+     iOS     -> native share sheet (Web Share API) -> "Save to Files" -> iCloud Drive
+     Android -> <a download> of the blob -> Downloads folder (share sheet as an alternative)
+   Both need a fresh tap. The file is built asynchronously, so the tap on
+   "Export PDF/Excel" has expired by the time it is ready - hence the modal. */
+
+function getShareFile(d) {
+    if (d.fileObj) return d.fileObj;
     try {
-        return Boolean(
-            navigator.share &&
-            navigator.canShare &&
-            navigator.canShare({ files: [file] })
-        );
+        d.fileObj = new File([d.blob], d.filename, { type: d.mimeType, lastModified: Date.now() });
+    } catch (e) {
+        d.fileObj = null;
+    }
+    return d.fileObj;
+}
+
+function canShareExport(d) {
+    try {
+        const file = getShareFile(d);
+        if (!file || !navigator.share) return false;
+        return navigator.canShare ? navigator.canShare({ files: [file] }) : true;
     } catch (e) {
         return false;
     }
 }
 
-function triggerDirectMobileDownload(blob, filename, mimeType, dataUrl) {
-    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// Returns 'shared' | 'cancelled' | 'unsupported' | 'failed'.
+// Must be called synchronously from a tap handler (before any await).
+async function shareExport(d) {
+    if (!canShareExport(d)) return 'unsupported';
+    try {
+        await navigator.share({ files: [getShareFile(d)], title: d.filename });
+        return 'shared';
+    } catch (e) {
+        if (e && e.name === 'AbortError') return 'cancelled';
+        console.warn('navigator.share() failed:', e);
+        return 'failed';
+    }
+}
 
-    if (isIOSDevice) {
-        // iOS: Use Web Share API with File → triggers native "Save to Files" sheet
-        const fileForShare = blob
-            ? new File([blob], filename, { type: mimeType || 'application/octet-stream', lastModified: Date.now() })
-            : null;
-        if (fileForShare && navigator.canShare && navigator.canShare({ files: [fileForShare] })) {
-            navigator.share({ files: [fileForShare], title: filename }).catch(() => {
-                const fbUrl = dataUrl || (blob ? URL.createObjectURL(blob) : "");
-                if (fbUrl) window.location.href = fbUrl;
-            });
-            return true;
-        }
-        const fallbackUrl = dataUrl || (blob ? URL.createObjectURL(blob) : "");
-        if (fallbackUrl) window.location.href = fallbackUrl;
+function downloadExport(d) {
+    try {
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = d.blobUrl;
+        a.download = d.filename;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { try { document.body.removeChild(a); } catch (e) {} }, 1000);
         return true;
+    } catch (e) {
+        console.warn('Anchor download failed:', e);
+        return false;
     }
+}
 
-    // Android: Single blob URL anchor click
-    if (blob) {
-        try {
-            const blobUrl = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = blobUrl;
-            a.download = filename;
-            a.setAttribute('download', filename);
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-                try { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); } catch(e) {}
-            }, 15000);
-            return true;
-        } catch(err) {
-            console.warn("Blob anchor click failed:", err);
-        }
+// Opens the blob in a new tab. Must be called synchronously from a tap handler.
+// On iOS the viewer has a Share button -> Save to Files -> iCloud Drive.
+function openExport(d) {
+    try {
+        return Boolean(window.open(d.blobUrl, '_blank'));
+    } catch (e) {
+        return false;
     }
-
-    // Fallback: data URI
-    if (dataUrl && dataUrl.startsWith('data:')) {
-        try {
-            const a2 = document.createElement('a');
-            a2.style.display = 'none';
-            a2.href = dataUrl;
-            a2.download = filename;
-            a2.setAttribute('download', filename);
-            document.body.appendChild(a2);
-            a2.click();
-            setTimeout(() => { try { document.body.removeChild(a2); } catch(e) {} }, 1000);
-            return true;
-        } catch(err2) {
-            console.warn("Data URI fallback failed:", err2);
-        }
-    }
-
-    return false;
 }
 
 function triggerBrowserDownload(blob, filename) {
@@ -1487,9 +1487,19 @@ function triggerBrowserDownload(blob, filename) {
     }, 60000);
 }
 
+function setExportStatus(msg, isError) {
+    const el = document.getElementById("modal-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.classList.toggle("error", Boolean(isError));
+    el.style.display = msg ? "block" : "none";
+}
+
 function showMobileExportModal(exportData) {
     const modal = document.getElementById("export-modal");
     if (!modal) return;
+
+    const ios = isIOS();
 
     const iconEl = document.getElementById("modal-file-icon");
     if (iconEl) {
@@ -1513,96 +1523,60 @@ function showMobileExportModal(exportData) {
         pathEl.innerHTML = `localStorage['medi_elves_saved_${exportData.type}'] &bull; IndexedDB`;
     }
 
-    const subtextEl = document.getElementById("modal-download-subtext");
-    if (subtextEl) {
-        subtextEl.textContent = isIOS()
-            ? "Tap to save to iCloud Drive / Files"
-            : "Tap to download to your device";
-    }
+    setExportStatus("");
 
     const dlBtn = document.getElementById("modal-download-btn");
+    const shareBtn = document.getElementById("modal-share-btn");
+    const openBtn = document.getElementById("modal-open-btn");
+
+    // Primary action
     if (dlBtn) {
-        dlBtn.download = exportData.filename;
-        dlBtn.setAttribute("download", exportData.filename);
+        dlBtn.querySelector("strong").textContent = ios ? "Save to iCloud Drive / Files" : "Download File";
+        dlBtn.querySelector("small").textContent = ios
+            ? "Opens the share sheet - choose Save to Files, then iCloud Drive"
+            : "Saves to your Downloads folder";
 
-        if (isIOS()) {
-            // iOS: the anchor must NOT navigate on its own.
-            // All download logic is driven from onclick via navigator.share().
-            dlBtn.href = "#";
-            dlBtn.removeAttribute("target");
-            dlBtn.rel = "noopener noreferrer";
-        } else {
-            // Android / Desktop: the REAL user-tap on this anchor is the download.
-            // href points to the blob URL (works in Chrome) with dataUrl fallback (WebView).
-            // Do NOT add any extra programmatic clicks — that caused the double-download.
-            dlBtn.href = exportData.blobUrl || exportData.dataUrl || "#";
-            dlBtn.target = "_blank";
-            dlBtn.rel = "noopener noreferrer";
-        }
-
-        dlBtn.onclick = async function(e) {
-
-            // ═══════════════════════════════════════════════════════
-            // iOS — Save to iCloud Drive / Files App
-            // ═══════════════════════════════════════════════════════
-            if (isIOS()) {
-                e.preventDefault(); // stop anchor from navigating
-
-                // Build File object for share sheet
-                let fileToShare = exportData.fileObj;
-                if (!fileToShare && exportData.blob) {
-                    try {
-                        fileToShare = new File([exportData.blob], exportData.filename, {
-                            type: exportData.mimeType,
-                            lastModified: Date.now()
-                        });
-                    } catch (ferr) {
-                        console.warn("File() construction failed:", ferr);
-                    }
+        dlBtn.onclick = async function () {
+            if (ios) {
+                const result = await shareExport(exportData);
+                if (result === "shared") {
+                    showToast("Saved - check the Files app");
+                    setTimeout(closeMobileExportModal, 800);
+                } else if (result !== "cancelled") {
+                    setExportStatus(
+                        "The share sheet is not available in this view. Tap \"Open file\" below, " +
+                        "then use the Share button → Save to Files → iCloud Drive.", true);
                 }
-
-                // Primary: navigator.share() → native iOS Share Sheet → "Save to Files" / iCloud Drive
-                if (navigator.share && fileToShare) {
-                    try {
-                        await navigator.share({
-                            files: [fileToShare],
-                            title: exportData.filename
-                        });
-                        showToast("Saved to iCloud Drive / Files!");
-                        setTimeout(() => closeMobileExportModal(), 800);
-                        return;
-                    } catch (shareErr) {
-                        if (shareErr.name === "AbortError") {
-                            // User deliberately cancelled the share sheet — do nothing
-                            return;
-                        }
-                        console.warn("navigator.share() failed:", shareErr);
-                        // fall through to dataUrl fallback
-                    }
-                }
-
-                // Fallback: navigate to dataUrl so Safari shows its own download/open dialog.
-                // NOTE: blobUrl only shows in-app preview on iOS; dataUrl triggers the save dialog.
-                const iosFallback = exportData.dataUrl || exportData.blobUrl;
-                if (iosFallback) {
-                    try { window.location.href = iosFallback; } catch (navErr) {
-                        console.warn("window.location fallback failed:", navErr);
-                    }
-                }
-                showToast("Opening download dialog...");
-                setTimeout(() => closeMobileExportModal(), 1000);
                 return;
             }
 
-            // ═══════════════════════════════════════════════════════
-            // Android — Let the natural anchor tap do the download.
-            // The href is already set to blobUrl/dataUrl above.
-            // We do NOT call e.preventDefault() and we do NOT fire
-            // any extra programmatic anchor clicks.
-            // Just show the toast and close the modal.
-            // ═══════════════════════════════════════════════════════
-            showToast("Downloading " + exportData.filename);
-            setTimeout(() => closeMobileExportModal(), 1200);
+            if (downloadExport(exportData)) {
+                setExportStatus(
+                    "Download started - check your notifications or the Downloads folder. " +
+                    "If nothing downloaded, use \"Share\" or \"Open file\" below.");
+            } else {
+                setExportStatus("Download is blocked in this view. Use \"Share\" or \"Open file\" below.", true);
+            }
+        };
+    }
+
+    // Secondary: share sheet on Android (Drive, Files, WhatsApp...). On iOS it is the primary button.
+    if (shareBtn) {
+        shareBtn.hidden = ios || !canShareExport(exportData);
+        shareBtn.onclick = async function () {
+            const result = await shareExport(exportData);
+            if (result === "failed" || result === "unsupported") {
+                setExportStatus("Sharing is not available in this view. Use \"Open file\" below.", true);
+            }
+        };
+    }
+
+    // Fallback that works in nearly every browser: open the file, then save from the viewer.
+    if (openBtn) {
+        openBtn.onclick = function () {
+            if (!openExport(exportData)) {
+                setExportStatus("The browser blocked opening the file. Allow pop-ups for this page and try again.", true);
+            }
         };
     }
 
@@ -1631,7 +1605,11 @@ async function handleFileExport({ blob, filename, mimeType, type, doc, wb, dataU
         }
     }
 
-    await saveExportToLocalStorage(blob, filename, mimeType, type, dataUrl);
+    // Persisting a copy is best-effort and must never block the Save button:
+    // Safari can hang or throw on IndexedDB/localStorage inside a cross-origin iframe.
+    saveExportToLocalStorage(blob, filename, mimeType, type, dataUrl).catch((e) => {
+        console.warn("Could not persist export copy:", e);
+    });
 
     let fileObj = null;
     try {
