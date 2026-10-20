@@ -1445,6 +1445,53 @@ async function shareExport(d) {
 }
 
 function downloadExport(d) {
+  // Detect platform
+  const ua = navigator.userAgent || navigator.vendor || window.opera;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  const isAndroid = /Android/.test(ua);
+
+  if (isIOS) {
+    // On iOS use Web Share API to allow saving to iCloud Drive or other apps
+    return shareExport(d).then(result => {
+      if (result && result !== 'unsupported') {
+        setExportStatus('Export shared via iOS share sheet.', false);
+        return true;
+      } else {
+        setExportStatus('Sharing is not available on this iOS device.', true);
+        return false;
+      }
+    });
+  }
+
+  if (isAndroid) {
+    // On Android we persist the export in localStorage and trigger a direct download
+    // Save to IndexedDB/localStorage first (already done in handleFileExport)
+    // Create a temporary link to download the blob
+    try {
+      const url = URL.createObjectURL(d.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = d.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setExportStatus('Export downloaded (Android).', false);
+      return true;
+    } catch (e) {
+      console.error('Android download failed:', e);
+      setExportStatus('Could not download on Android: ' + e.message, true);
+      return false;
+    }
+  }
+
+  // Fallback for other platforms
+  if (canShareExport(d)) {
+    return shareExport(d);
+  }
+  setExportStatus('Export not supported on this platform.', true);
+  return false;
+}
     try {
         const a = document.createElement('a');
         a.style.display = 'none';
