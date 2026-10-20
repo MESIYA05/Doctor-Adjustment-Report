@@ -1478,6 +1478,24 @@ function triggerBrowserDownload(blob, filename) {
     }, 60000);
 }
 
+// One-line capability report so a failed save on a real phone can be diagnosed.
+function exportDiagnostics(d) {
+    const ua = navigator.userAgent || "";
+    const webview = /; wv\)|Version\/[\d.]+ Chrome|FBAN|FBAV|Zoho/i.test(ua) ||
+        (isIOS() && !/Safari/i.test(ua));
+    let share = "no", canShare = "no";
+    try { share = navigator.share ? "yes" : "no"; } catch (e) {}
+    try { canShare = canShareExport(d) ? "yes" : "no"; } catch (e) {}
+    let framed = "no";
+    try { framed = window.top !== window.self ? "yes" : "no"; } catch (e) { framed = "yes"; }
+    return "[" + (isIOS() ? "iOS" : isAndroid() ? "Android" : "other") +
+        " webview=" + (webview ? "yes" : "no") +
+        " framed=" + framed +
+        " share=" + share +
+        " canShareFile=" + canShare +
+        (d && d.lastError ? " shareError=" + d.lastError : "") + "]";
+}
+
 function setExportStatus(msg, isError) {
     const el = document.getElementById("modal-status");
     if (!el) return;
@@ -1536,18 +1554,18 @@ function showMobileExportModal(exportData) {
                     // Share sheet unavailable (e.g. blocked inside the Creator frame): download the file
                     // directly instead. Safari saves it to Downloads (iCloud Drive/Downloads if enabled).
                     if (downloadExport(exportData)) {
-                        setExportStatus("Download requested - check Files > Downloads. If no file appears, this Zoho view blocks downloads from the page (see Share / browser).", false);
+                        setExportStatus("Download requested - check Files > Downloads. If no file appears, this Zoho view blocks downloads. " + exportDiagnostics(exportData), false);
                     } else {
-                        setExportStatus("Could not save the file (" + (exportData.lastError || result) + ").", true);
+                        setExportStatus("Could not save the file. " + exportDiagnostics(exportData), true);
                     }
                 }
                 return;
             }
 
             if (downloadExport(exportData)) {
-                setExportStatus("Download requested - check your notifications or the Downloads folder. If no file appears, this Zoho view blocks downloads from the page.", false);
+                setExportStatus("Download requested - check your notifications or the Downloads folder. If no file appears, this Zoho view blocks downloads. " + exportDiagnostics(exportData), false);
             } else {
-                setExportStatus("Download is blocked in this view. Try \"Share / Save to Drive\" below.", true);
+                setExportStatus("Download is blocked in this view. " + exportDiagnostics(exportData), true);
             }
         };
     }
@@ -1558,7 +1576,7 @@ function showMobileExportModal(exportData) {
         shareBtn.onclick = async function () {
             const result = await shareExport(exportData);
             if (result === "failed" || result === "unsupported") {
-                setExportStatus("Sharing is not available in this view (" + (exportData.lastError || result) + ").", true);
+                setExportStatus("Sharing is not available in this view. " + exportDiagnostics(exportData), true);
             }
         };
     }
