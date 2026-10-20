@@ -1199,9 +1199,9 @@ let CURRENT_EXPORT_DATA = null;
 
 function isMobileDevice() {
     const ua = navigator.userAgent || navigator.vendor || window.opera || "";
+    const isTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i.test(ua);
-    const isIPadOS = /Macintosh/i.test(ua) && Boolean(navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
-    return Boolean(isMobileUA || isIPadOS);
+    return Boolean(isMobileUA || (isTouch && window.innerWidth <= 1024));
 }
 
 function isIOS() {
@@ -1404,93 +1404,6 @@ function canShareFile(file) {
     }
 }
 
-function triggerDirectMobileDownload(blob, filename, mimeType, dataUrl) {
-    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-    // 1. iOS Special Handling
-    if (isIOSDevice) {
-        const blobUrl = URL.createObjectURL(blob);
-        if (mimeType === 'application/pdf') {
-            // iOS Safari & WKWebView natively render PDF when opened in a new window/tab
-            const win = window.open(blobUrl, '_blank');
-            if (!win || win.closed || typeof win.closed === 'undefined') {
-                window.location.href = blobUrl;
-            }
-            return true;
-        } else {
-            // Excel on iOS: synchronous anchor click triggers native Safari download prompt
-            const a = document.createElement('a');
-            a.href = blobUrl;
-            a.download = filename;
-            a.setAttribute('download', filename);
-            a.target = '_blank';
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-                try { document.body.removeChild(a); } catch(e){}
-            }, 1000);
-            return true;
-        }
-    }
-
-    // 2. Android: Synchronous HTML5 Anchor Click with Blob URL
-    try {
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = blobUrl;
-        a.download = filename;
-        a.setAttribute('download', filename);
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-            try {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(blobUrl);
-            } catch(e) {}
-        }, 15000);
-    } catch(err) {
-        console.warn("Synchronous blob click failed:", err);
-    }
-
-    // 3. Android WebView fallback: Data URI with application/octet-stream
-    if (dataUrl && dataUrl.startsWith('data:')) {
-        try {
-            const octetUrl = dataUrl.replace(/^data:[^;]+;/, 'data:application/octet-stream;');
-            const a2 = document.createElement('a');
-            a2.style.display = 'none';
-            a2.href = octetUrl;
-            a2.download = filename;
-            a2.setAttribute('download', filename);
-            document.body.appendChild(a2);
-            a2.click();
-            setTimeout(() => {
-                try { document.body.removeChild(a2); } catch(e){}
-            }, 1000);
-        } catch(err2) {
-            console.warn("Data URI octet-stream fallback failed:", err2);
-        }
-    }
-
-    // 4. Zoho Creator Parent URL Navigation fallback (if inside Zoho Creator container)
-    if (typeof ZOHO !== "undefined" && ZOHO.CREATOR && ZOHO.CREATOR.UTIL && 
-        typeof ZOHO.CREATOR.UTIL.navigateParentURL === "function") {
-        try {
-            const targetUrl = (dataUrl && dataUrl.length < 500000) ? dataUrl : URL.createObjectURL(blob);
-            ZOHO.CREATOR.UTIL.navigateParentURL({
-                action: "open",
-                url: targetUrl,
-                window: "new"
-            });
-        } catch(zErr) {
-            console.warn("navigateParentURL error:", zErr);
-        }
-    }
-
-    return true;
-}
-
 function triggerBrowserDownload(blob, filename) {
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1534,34 +1447,16 @@ function showMobileExportModal(exportData) {
         pathEl.innerHTML = `localStorage['medi_elves_saved_${exportData.type}'] &bull; IndexedDB`;
     }
 
-    const subtextEl = document.getElementById("modal-download-subtext");
-    if (subtextEl) {
-        if (isIOS() && exportData.type === "pdf") {
-            subtextEl.textContent = "Tap to view & save PDF to your device";
-        } else {
-            subtextEl.textContent = "Tap to download report to your device";
-        }
-    }
-
-    // Setup Download File Directly button
     const dlBtn = document.getElementById("modal-download-btn");
     if (dlBtn) {
         dlBtn.download = exportData.filename;
-        dlBtn.setAttribute("download", exportData.filename);
-
-        let directHref = exportData.dataUrl || exportData.blobUrl || "#";
-        if (exportData.type === "excel" && exportData.dataUrl) {
-            directHref = exportData.dataUrl.replace(/^data:[^;]+;/, "data:application/octet-stream;");
-        }
-        dlBtn.href = directHref;
-        dlBtn.target = "_blank";
-        dlBtn.rel = "noopener noreferrer";
-
-        dlBtn.onclick = async function(e) {
-            // ── A. iPhone / iPad (iOS) ──
+        dlBtn.href = exportData.dataUrl || exportData.blobUrl;
+        dlBtn.onclick = async (e) => {
+            // iPhone / iPad: WebKit blocks <a download> inside iframes.
+            // Calling navigator.share on direct tap opens Apple's native "Save to Files" dialog.
             if (isIOS()) {
                 let fileToShare = exportData.fileObj;
-                if (!fileToShare && exportData.blob) {
+                if (!fileToShare) {
                     try {
                         fileToShare = new File([exportData.blob], exportData.filename, {
                             type: exportData.mimeType,
@@ -1582,67 +1477,36 @@ function showMobileExportModal(exportData) {
                         return;
                     } catch (err) {
                         if (err.name === "AbortError") {
-                            return; // User cancelled share sheet
+                            return; // User cancelled
                         }
                         console.warn("iOS share fallback:", err);
                     }
                 }
 
-                // If PDF on iOS and share was not used/failed:
-                // Open in new tab so iOS's built-in PDF reader opens with the native Share/Save button
+                // iOS fallback if share fails: open in new tab so iOS viewer can save
                 if (exportData.type === "pdf") {
+                    e.preventDefault();
+                    window.open(exportData.blobUrl, "_blank");
+                    setTimeout(() => closeMobileExportModal(), 800);
+                    return;
+                } else {
                     e.preventDefault();
                     const targetUrl = exportData.blobUrl || exportData.dataUrl;
                     const win = window.open(targetUrl, "_blank");
                     if (!win || win.closed || typeof win.closed === "undefined") {
                         window.location.href = targetUrl;
                     }
-                    showToast("Opening PDF to view & save...");
                     setTimeout(() => closeMobileExportModal(), 800);
                     return;
                 }
-
-                // Excel on iOS: Trigger native download without preventDefault
-                try {
-                    triggerBrowserDownload(exportData.blob, exportData.filename);
-                } catch(err) {
-                    console.warn("triggerBrowserDownload failed:", err);
-                }
-                showToast("Downloading " + exportData.filename);
-                setTimeout(() => closeMobileExportModal(), 1000);
-                return;
             }
 
-            // ── B. Android & Other Mobile Devices ──
-            // Do NOT preventDefault! Let the real user tap on dlBtn (with href=dataUrl/blobUrl) proceed!
-            // In addition, trigger synchronous anchor download:
-            try {
-                triggerBrowserDownload(exportData.blob, exportData.filename);
-            } catch(err) {
-                console.warn("triggerBrowserDownload failed:", err);
-            }
-
-            // Extra fallback for Android WebView: data URI octet-stream click
-            if (exportData.dataUrl && exportData.dataUrl.startsWith("data:")) {
-                try {
-                    const octetUrl = exportData.dataUrl.replace(/^data:[^;]+;/, "data:application/octet-stream;");
-                    const a2 = document.createElement("a");
-                    a2.style.display = "none";
-                    a2.href = octetUrl;
-                    a2.download = exportData.filename;
-                    a2.setAttribute("download", exportData.filename);
-                    document.body.appendChild(a2);
-                    a2.click();
-                    setTimeout(() => {
-                        try { document.body.removeChild(a2); } catch(e){}
-                    }, 1000);
-                } catch(err2) {
-                    console.warn("Data URI octet-stream fallback failed:", err2);
-                }
-            }
-
+            // Android & Desktop: Direct download trigger
+            triggerBrowserDownload(exportData.blob, exportData.filename);
             showToast("Downloading " + exportData.filename);
-            setTimeout(() => closeMobileExportModal(), 1000);
+            setTimeout(() => {
+                closeMobileExportModal();
+            }, 1000);
         };
     }
 
@@ -1654,7 +1518,7 @@ function closeMobileExportModal() {
     if (modal) modal.classList.remove("open");
 }
 
-async function handleFileExport({ blob, filename, mimeType, type, doc, wb }) {
+async function handleFileExport({ blob, filename, mimeType, type }) {
     if (CURRENT_ACTIVE_BLOB_URL) {
         try { URL.revokeObjectURL(CURRENT_ACTIVE_BLOB_URL); } catch (e) {}
         CURRENT_ACTIVE_BLOB_URL = null;
@@ -1686,9 +1550,7 @@ async function handleFileExport({ blob, filename, mimeType, type, doc, wb }) {
         mimeType,
         type,
         size: blob.size,
-        date: new Date(),
-        doc,
-        wb
+        date: new Date()
     };
 
     const isMobile = isMobileDevice();
@@ -1900,21 +1762,13 @@ aoa.push([
             XLSX.utils.book_append_sheet(wb, ws, 'Adjustment Report');
             const filename = 'Adjustment_Report_' + new Date().toISOString().split('T')[0] + '.xlsx';
 
-            if (!isMobileDevice()) {
-                XLSX.writeFile(wb, filename);
-                hideLoading();
-                showToast('✓ Excel exported successfully');
-                return;
-            }
-
             const blob = workbookToBlob(wb);
             hideLoading();
             await handleFileExport({
                 blob,
                 filename,
                 mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                type: 'excel',
-                wb: wb
+                type: 'excel'
             });
         } catch (e) { hideLoading(); showToast('Export failed: ' + e.message); }
     }, 80);
@@ -2458,21 +2312,13 @@ async function exportPDF() {
 
             const filename = 'Adjustment_Report_' + new Date().toISOString().split('T')[0] + '.pdf';
 
-            if (!isMobileDevice()) {
-                doc.save(filename);
-                hideLoading();
-                showToast('✓ PDF exported successfully');
-                return;
-            }
-
             const pdfBlob = doc.output('blob');
             hideLoading();
             await handleFileExport({
                 blob: pdfBlob,
                 filename,
                 mimeType: 'application/pdf',
-                type: 'pdf',
-                doc: doc
+                type: 'pdf'
             });
         } catch (e) { hideLoading(); showToast('Export failed: ' + e.message); }
     }, 80);
