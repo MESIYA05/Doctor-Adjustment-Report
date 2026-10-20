@@ -175,6 +175,14 @@ async function initWidget() {
         const loginUserEmail = (initParams && initParams.loginUser) ? initParams.loginUser.toLowerCase() : '';
 
         const matchedDoctor = doctors.find(doc => {
+            // Try matching by email first (primary)
+            const email = (doc.Email || doc.Doctor_Email || doc.email || '').toLowerCase();
+            if (email && email === loginUserEmail) return true;
+            // Fallback: match by doctor name if email not available
+            const name = (doc.Doctor_Name || doc.Name || doc.Full_Name || '').toLowerCase();
+            if (name && loginUserEmail && name.includes(loginUserEmail.split('@')[0])) return true;
+            return false;
+        });
             const email = (doc.Email || doc.Doctor_Email || doc.email || '').toLowerCase();
             return email && email === loginUserEmail;
         });
