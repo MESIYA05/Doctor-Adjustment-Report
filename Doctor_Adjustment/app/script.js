@@ -1439,6 +1439,7 @@ async function shareExport(d) {
     } catch (e) {
         if (e && e.name === 'AbortError') return 'cancelled';
         console.warn('navigator.share() failed:', e);
+        d.lastError = (e && e.name) || 'unknown';
         return 'failed';
     }
 }
@@ -1456,16 +1457,6 @@ function downloadExport(d) {
         return true;
     } catch (e) {
         console.warn('Anchor download failed:', e);
-        return false;
-    }
-}
-
-// Opens the blob in a new tab. Must be called synchronously from a tap handler.
-// On iOS the viewer has a Share button -> Save to Files -> iCloud Drive.
-function openExport(d) {
-    try {
-        return Boolean(window.open(d.blobUrl, '_blank'));
-    } catch (e) {
         return false;
     }
 }
@@ -1527,7 +1518,6 @@ function showMobileExportModal(exportData) {
 
     const dlBtn = document.getElementById("modal-download-btn");
     const shareBtn = document.getElementById("modal-share-btn");
-    const openBtn = document.getElementById("modal-open-btn");
 
     // Primary action
     if (dlBtn) {
@@ -1543,19 +1533,21 @@ function showMobileExportModal(exportData) {
                     showToast("Saved - check the Files app");
                     setTimeout(closeMobileExportModal, 800);
                 } else if (result !== "cancelled") {
-                    setExportStatus(
-                        "The share sheet is not available in this view. Tap \"Open file\" below, " +
-                        "then use the Share button → Save to Files → iCloud Drive.", true);
+                    // Share sheet unavailable (e.g. blocked inside the Creator frame): download the file
+                    // directly instead. Safari saves it to Downloads (iCloud Drive/Downloads if enabled).
+                    if (downloadExport(exportData)) {
+                        setExportStatus("Download started - open the Files app and check the Downloads folder.");
+                    } else {
+                        setExportStatus("Could not save the file (" + (exportData.lastError || result) + ").", true);
+                    }
                 }
                 return;
             }
 
             if (downloadExport(exportData)) {
-                setExportStatus(
-                    "Download started - check your notifications or the Downloads folder. " +
-                    "If nothing downloaded, use \"Share\" or \"Open file\" below.");
+                setExportStatus("Download started - check your notifications or the Downloads folder.");
             } else {
-                setExportStatus("Download is blocked in this view. Use \"Share\" or \"Open file\" below.", true);
+                setExportStatus("Download is blocked in this view. Try \"Share / Save to Drive\" below.", true);
             }
         };
     }
@@ -1566,16 +1558,7 @@ function showMobileExportModal(exportData) {
         shareBtn.onclick = async function () {
             const result = await shareExport(exportData);
             if (result === "failed" || result === "unsupported") {
-                setExportStatus("Sharing is not available in this view. Use \"Open file\" below.", true);
-            }
-        };
-    }
-
-    // Fallback that works in nearly every browser: open the file, then save from the viewer.
-    if (openBtn) {
-        openBtn.onclick = function () {
-            if (!openExport(exportData)) {
-                setExportStatus("The browser blocked opening the file. Allow pop-ups for this page and try again.", true);
+                setExportStatus("Sharing is not available in this view (" + (exportData.lastError || result) + ").", true);
             }
         };
     }
